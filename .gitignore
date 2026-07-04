@@ -54,3 +54,4 @@ uploads/
 *.zip
 unificador.txt
 .config/
+.npm/
