@@ -8,95 +8,186 @@ import {
   getProjectConfig,
   type SelectedProject,
 } from "@/services/supabase/roundRobin";
-import { getOrCreateClient, STORAGE_KEYS } from "@/services/supabase/clientFactory";
 
 /**
- * Registra un nuevo gestor usando ROUND-ROBIN entre Proyecto 1 y Proyecto 2.
- *
- * ⚠️ IMPORTANTE: El flujo correcto es:
- * 1. Leer contadores de ambos proyectos → elegir el de menos registros
- * 2. Crear usuario en Auth con TODOS los datos en metadata
- * 3. El trigger handle_new_user() (SECURITY DEFINER) crea la fila COMPLETA en profiles
- * 4. NO se necesita UPDATE separado (eso causaba que los campos quedaran NULL)
- *
- * ¿Por qué no funciona el UPDATE después de signUp?
- *   Cuando "Confirm email" está activado en Supabase, signUp() devuelve
- *   session: null. Sin sesión activa, auth.uid() es null en RLS, y el
- *   UPDATE de profiles es bloqueado silenciosamente (0 filas afectadas).
- *   El trigger con SECURITY DEFINER salta RLS y crea todo en un solo paso.
+ * Registra un nuevo gestor usando ROUND-ROBIN.
+ * 
+ * v3: Logging EXTREMO para diagnosticar el error de red.
+ * Cada paso se registra en un array que se expone al usuario
+ * en pantalla (sin necesidad de consola).
  */
 export async function registerGestor(
   values: RegisterFormValues,
   onProgress: (status: string) => void
 ) {
+  // Diagnóstico acumulado — se devuelve en el error si falla
+  const diag: string[] = [];
   const log = (msg: string, data?: any) => {
-    console.log(`[REGISTER DEBUG] ${msg}`, data || "");
+    const line = data ? `${msg} ${typeof data === "string" ? data : JSON.stringify(data)}` : msg;
+    diag.push(line);
+    console.log(`[REGISTER] ${line}`);
   };
 
-  log("INICIANDO REGISTRO CON ROUND-ROBIN", { email: values.email });
+  log("=== INICIO REGISTRO ===");
+  log(`Hora: ${new Date().toLocaleString("es-CU", { timeZone: "America/Havana" })}`);
+  log(`Email: ${values.email}`);
+  log(`Online: ${navigator.onLine}`);
+  log(`URL P1: ${process.env.NEXT_PUBLIC_SUPABASE_URL_1 || "NO CONFIG"}`);
+  log(`KEY P1: ${process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1 ? "✅ Configurada" : "❌ NO CONFIG"}`);
+  log(`URL P2: ${process.env.NEXT_PUBLIC_SUPABASE_URL_2 || "NO CONFIG"}`);
+  log(`KEY P2: ${process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2 ? "✅ Configurada" : "❌ NO CONFIG"}`);
+  log("");
 
   // ─── PASO 1: Determinar proyecto ───
   onProgress("Determinando proyecto óptimo...");
+  log("PASO 1: Determinando proyecto con round-robin...");
 
-  const { project, config, counts } =
-    await determineProjectForRegistration();
+  let project: SelectedProject;
+  let config: ReturnType<typeof getProjectConfig>;
 
-  log(
-    `PROYECTO SELECCIONADO: ${project}`,
-    { counts, url: config.url.substring(0, 30) + "..." }
-  );
+  try {
+    const result = await determineProjectForRegistration();
+    project = result.project;
+    config = result.config;
+    log(`✅ Proyecto seleccionado: ${project}`);
+    log(`URL: ${config.url}`);
+    log(`Contadores: P1=${result.counts.p1}, P2=${result.counts.p2}`);
+  } catch (err: any) {
+    log(`❌ ERROR en determineProjectForRegistration()`);
+    log(`Tipo: ${err?.name || "Error"}`);
+    log(`Mensaje: ${err?.message || "Sin mensaje"}`);
+    log(`Stack: ${err?.stack?.substring(0, 200) || "N/A"}`);
 
-  // ─── PASO 2: Crear cliente temporal para registro ───
-  const supabase = createRegistrationClient(config);
+    // Intentar con P1 directamente como fallback
+    log("Intentando fallback directo a Proyecto 1...");
+    const p1Config = getProjectConfig(1);
+    if (!p1Config.url || !p1Config.anonKey) {
+      throw Object.assign(
+        new Error("No se pudo determinar el proyecto y P1 no está configurado. Verifica las variables en Vercel."),
+        { diag }
+      );
+    }
+    project = 1;
+    config = p1Config;
+    log(`Fallback: usando P1 directamente`);
+  }
 
-  // ─── PASO 3: Registro en Supabase Auth con TODOS los datos ───
-  // El trigger handle_new_user() leerá estos metadatos y creará
-  // la fila COMPLETA en profiles. No necesitamos UPDATE después.
+  log("");
+
+  // ─── PASO 2: Crear cliente temporal ───
+  log("PASO 2: Creando cliente de registro...");
+  let supabase;
+  try {
+    supabase = createRegistrationClient(config);
+    log(`✅ Cliente creado para P${project}`);
+  } catch (err: any) {
+    log(`❌ ERROR creando cliente: ${err?.message}`);
+    throw Object.assign(
+      new Error("Error creando cliente Supabase: " + err?.message),
+      { diag }
+    );
+  }
+
+  log("");
+
+  // ─── PASO 3: Intentar ping al proyecto ───
+  log("PASO 3: Verificando conexión al proyecto antes de signUp...");
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const pingResponse = await fetch(config.url, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    log(`✅ Ping OK: HTTP ${pingResponse.status} ${pingResponse.statusText}`);
+  } catch (pingErr: any) {
+    log(`❌ PING FALLÓ: ${pingErr?.name === "AbortError" ? "Timeout 10s" : pingErr?.message}`);
+    log(`⚠️ El proyecto ${project} NO responde. Posiblemente está PAUSADO.`);
+    log(`Ve a https://supabase.com/dashboard y verifica que el proyecto esté activo.`);
+  }
+
+  log("");
+
+  // ─── PASO 4: signUp ───
   onProgress(`Creando usuario en Proyecto ${project}...`);
-  log("Ejecutando auth.signUp con metadatos completos...");
+  log("PASO 4: Ejecutando auth.signUp()...");
+  log(`Enviando signUp con email: ${values.email}`);
+  log(`Metadata: full_name=${values.fullName}, assigned_project=${project}`);
 
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: values.email,
-    password: values.password,
-    options: {
-      data: {
-        // ── Identidad ──
-        full_name: values.fullName,
-        display_name: values.username,
-        phone: values.phone,
+  let authData: any;
+  let authError: any;
 
-        // ── Información personal (ANTES no se pasaban → quedaban NULL) ──
-        age: String(values.age),
-        birth_date: values.birthDate,
-        gender: values.gender,
-        id_card: values.idCard,
-        address: values.address,
-        bank_card_number: values.bankCardNumber,
-        bank_card_holder: values.bankCardHolder,
-        transfer_confirmation_number: values.transferConfirmationNumber,
-        observations: values.observations || "",
-
-        // ── Experiencia ──
-        has_sales_experience: String(Boolean(values.hasSalesExperience)),
-        join_date: values.joinDate,
-
-        // ── Sistema ──
-        assigned_project: String(project),
-        read_privacy: String(Boolean(values.readPrivacy)),
-        read_terms: String(Boolean(values.readTerms)),
-        confirm_real_info: String(Boolean(values.confirmRealInfo)),
-        understand_payments: String(Boolean(values.understandPayments)),
+  try {
+    const result = await supabase.auth.signUp({
+      email: values.email,
+      password: values.password,
+      options: {
+        data: {
+          full_name: values.fullName,
+          display_name: values.username,
+          phone: values.phone,
+          age: String(values.age),
+          birth_date: values.birthDate,
+          gender: values.gender,
+          id_card: values.idCard,
+          address: values.address,
+          bank_card_number: values.bankCardNumber,
+          bank_card_holder: values.bankCardHolder,
+          transfer_confirmation_number: values.transferConfirmationNumber,
+          observations: values.observations || "",
+          has_sales_experience: String(Boolean(values.hasSalesExperience)),
+          join_date: values.joinDate,
+          assigned_project: String(project),
+          read_privacy: String(Boolean(values.readPrivacy)),
+          read_terms: String(Boolean(values.readTerms)),
+          confirm_real_info: String(Boolean(values.confirmRealInfo)),
+          understand_payments: String(Boolean(values.understandPayments)),
+        },
       },
-    },
-  });
+    });
+    authData = result.data;
+    authError = result.error;
+  } catch (fetchErr: any) {
+    log(`❌ EXCEPCIÓN en signUp (no es error Supabase, es error de RED):`);
+    log(`Tipo: ${fetchErr?.name || "Error"}`);
+    log(`Mensaje: ${fetchErr?.message || "Sin mensaje"}`);
+    log(`Stack: ${fetchErr?.stack?.substring(0, 300) || "N/A"}`);
+
+    // Este es el error real — probablemente el proyecto está pausado
+    const isRetryable = fetchErr?.name?.includes("Retryable") || 
+                        fetchErr?.message?.includes("fetch") ||
+                        fetchErr?.message?.includes("network") ||
+                        fetchErr?.name?.includes("AuthRetryableFetchError");
+
+    let userMessage: string;
+    if (isRetryable) {
+      userMessage = 
+        "No se pudo conectar con Supabase. " +
+        "El proyecto probablemente está PAUSADO.\n\n" +
+        "SOLUCIÓN:\n" +
+        "1. Ve a https://supabase.com/dashboard\n" +
+        "2. Abre el proyecto " + (project === 1 ? "rfkpzgdeefswpqyihvof" : "blbhhezrqmpxxhliinpt") + "\n" +
+        "3. Si dice 'Paused', haz clic en 'Restore project'\n" +
+        "4. Espera 2 minutos y vuelve a intentar";
+    } else {
+      userMessage = "Error inesperado de red: " + (fetchErr?.message || "Desconocido");
+    }
+
+    throw Object.assign(new Error(userMessage), { diag });
+  }
 
   if (authError) {
-    log("ERROR EN AUTH.SIGNUP", authError);
+    log(`❌ SUPABASE AUTH ERROR:`);
+    log(`Nombre: ${authError.name || "N/A"}`);
+    log(`Mensaje: ${authError.message || "N/A"}`);
+    log(`Status: ${authError.status || "N/A"}`);
+    log(`Código: ${authError.code || "N/A"}`);
 
-    const message = authError.message?.toLowerCase() || "";
-    const errorName = (authError as any)?.name?.toLowerCase() || "";
+    const message = (authError.message || "").toLowerCase();
+    const errorName = (authError.name || "").toLowerCase();
 
-    // Error de red (no se puede conectar con Supabase)
+    // Error de red
     if (
       errorName.includes("retryable") ||
       errorName.includes("fetch") ||
@@ -104,78 +195,85 @@ export async function registerGestor(
       message.includes("network") ||
       message.includes("fetch")
     ) {
-      throw new Error(
-        "No se pudo conectar con el servidor de Supabase. " +
-        "Posibles causas:\n" +
-        "1. El proyecto de Supabase está pausado (ve a supabase.com y despiértalo)\n" +
-        "2. Las variables de entorno en Vercel están incorrectas\n" +
-        "3. Tu conexión a internet es inestable\n" +
-        "Intenta de nuevo en unos segundos."
+      throw Object.assign(
+        new Error(
+          "El servidor de Supabase no responde. " +
+          "El proyecto probablemente está PAUSADO.\n\n" +
+          "SOLUCIÓN:\n" +
+          "1. Ve a https://supabase.com/dashboard\n" +
+          "2. Abre el proyecto\n" +
+          "3. Si dice 'Paused', haz clic en 'Restore project'\n" +
+          "4. Espera 2 minutos y vuelve a intentar"
+        ),
+        { diag }
       );
     }
 
-    if (message.includes("rate limit") || message.includes("email rate limit exceeded")) {
-      throw new Error(
-        "Has intentado registrarte demasiadas veces con este correo. " +
-        "Supabase bloquea el registro temporalmente por seguridad. " +
-        "Espera unos minutos (hasta 1 hora) e inténtalo de nuevo, o usa otro correo Gmail."
+    if (message.includes("rate limit")) {
+      throw Object.assign(
+        new Error("Demasiados intentos. Espera unos minutos e inténtalo de nuevo."),
+        { diag }
       );
     }
     if (message.includes("already registered") || message.includes("user already exists")) {
-      throw new Error(
-        "Este correo ya está registrado en el sistema. " +
-        "Intenta iniciar sesión en vez de crear una cuenta nueva."
+      throw Object.assign(
+        new Error("Este correo ya está registrado. Intenta iniciar sesión."),
+        { diag }
       );
     }
     if (message.includes("invalid email")) {
-      throw new Error("El correo electrónico no es válido.");
+      throw Object.assign(new Error("El correo electrónico no es válido."), { diag });
     }
     if (message.includes("password")) {
-      throw new Error("La contraseña no cumple los requisitos de seguridad de Supabase.");
+      throw Object.assign(new Error("La contraseña no cumple los requisitos de seguridad."), { diag });
     }
 
-    throw new Error(
-      "Error al crear la cuenta: " + (authError.message || "Error desconocido")
+    throw Object.assign(
+      new Error("Error Supabase: " + (authError.message || "Desconocido")),
+      { diag }
     );
   }
 
-  const user = authData.user;
+  const user = authData?.user;
   if (!user) {
-    log("ERROR: signUp no devolvió usuario");
-    throw new Error("No se pudo crear el usuario en el sistema de autenticación.");
+    log("❌ signUp no devolvió usuario (session null = confirmar email requerido)");
+    log(`authData: ${JSON.stringify({ user: authData?.user ? "presente" : "null", session: authData?.session ? "presente" : "null" })}`);
+
+    // Si no hay user PERO no hay error, puede ser que Supabase requiera confirmar email
+    // y signUp devuelve session: null. Esto es normal.
+    // Verificar si hay algo en authData
+    if (authData?.user === null && authData?.session === null) {
+      log("⚠️ user=null y session=null — probablemente requiere confirmar email PERO el usuario SÍ se creó");
+    }
+
+    throw Object.assign(
+      new Error("signUp no devolvió usuario. Puede que el proyecto esté pausado o la key sea incorrecta."),
+      { diag }
+    );
   }
 
-  log("USUARIO CREADO EXITOSAMENTE — El trigger creó el perfil completo", {
-    userId: user.id,
-    project,
-  });
+  log(`✅ USUARIO CREADO: ${user.id}`);
+  log(`Email confirmado: ${user.email_confirmed_at || "Pendiente"}`);
 
-  // ─── PASO 4: Incrementar contador round-robin ───
-  // FIX #11: Usamos un cliente con el ANON KEY del proyecto
-  // (sin sesión de usuario) para llamar al RPC. Esto funciona
-  // porque el RPC increment_registration_counter() se ejecuta
-  // con SECURITY DEFINER o la tabla round_robin_counter permite
-  // escritura al rol anon (como debe ser para un contador público).
+  // ─── PASO 5: Incrementar contador ───
+  log("PASO 5: Incrementando contador round-robin...");
   try {
-    // Usamos el mismo cliente de registro (no requiere sesión)
-    const { error: counterError } = await supabase.rpc(
-      "increment_registration_counter"
-    );
+    const { error: counterError } = await supabase.rpc("increment_registration_counter");
     if (counterError) {
-      log("AVISO: No se pudo incrementar el contador (no crítico)", counterError.message);
+      log(`⚠️ Contador: ${counterError.message} (no crítico)`);
     } else {
-      log("Contador incrementado exitosamente");
+      log("✅ Contador incrementado");
     }
   } catch (e: any) {
-    log("AVISO: Excepción incrementando contador (no crítico)", e?.message || e);
+    log(`⚠️ Contador excepción: ${e?.message} (no crítico)`);
   }
 
-  // ─── PASO 5: Guardar proyecto del usuario en localStorage ───
+  // ─── PASO 6: Guardar proyecto ───
   saveUserProject(project);
-  log("PROYECTO GUARDADO EN LOCAL STORAGE", { project });
+  log(`✅ Proyecto ${project} guardado en localStorage`);
 
   onProgress("Finalizando registro...");
-  log("REGISTRO COMPLETADO TOTALMENTE — No se necesita UPDATE", { project });
+  log("=== REGISTRO COMPLETADO ===");
 
   return { user, project };
 }

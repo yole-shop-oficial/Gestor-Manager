@@ -107,10 +107,17 @@ export function RegisterWizard() {
       console.error("Error capturado en Wizard:", e);
 
       const errLines = [...preDiag];
-      errLines.push("");
-      errLines.push("=== ERROR EN REGISTRO ===");
-      errLines.push(`Tipo: ${e?.name || "Error"}`);
-      errLines.push(`Mensaje: ${e?.message || "Sin mensaje"}`);
+
+      // Si el error tiene diagnóstico detallado de api.ts, usarlo
+      if (e?.diag && Array.isArray(e.diag)) {
+        errLines.push("");
+        errLines.push(...e.diag);
+      } else {
+        errLines.push("");
+        errLines.push("=== ERROR EN REGISTRO ===");
+        errLines.push(`Tipo: ${e?.name || "Error"}`);
+        errLines.push(`Mensaje: ${e?.message || "Sin mensaje"}`);
+      }
 
       // Capturar POST-REGISTRO diagnóstico
       const postDiag = getClientDiagnostics();
@@ -118,7 +125,6 @@ export function RegisterWizard() {
       errLines.push("=== DIAGNÓSTICO POST-ERROR ===");
       errLines.push(`Clientes activos: ${postDiag.totalClients} (${postDiag.storageKeys.join(", ") || "ninguno"})`);
 
-      // Verificar localStorage
       try {
         const keys = Object.keys(localStorage).filter(k => k.startsWith("yole") || k.startsWith("sb-"));
         errLines.push(`LocalStorage keys: ${keys.join(", ") || "ninguna"}`);
