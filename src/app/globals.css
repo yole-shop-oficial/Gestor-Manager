@@ -1,0 +1,345 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-destructive: var(--destructive);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIGHT MODE — Limpio, profesional, brillante
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --background: #f5f7fb;
+  --foreground: #0f172a;
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #ec4899;
+  --accent: #f1f5f9;
+  --muted: #94a3b8;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --surface: #f8fafc;
+  --surface-foreground: #475569;
+  --destructive: #ef4444;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DARK MODE — Profundo, vibrante, glass-morphism
+   ═══════════════════════════════════════════════════════════ */
+.dark {
+  --background: #050816;
+  --foreground: #e2e8f0;
+  --primary: #818cf8;
+  --primary-foreground: #ffffff;
+  --secondary: #f472b6;
+  --accent: #0f172a;
+  --muted: #475569;
+  --muted-foreground: #94a3b8;
+  --border: rgba(148, 163, 184, 0.12);
+  --card: rgba(15, 23, 42, 0.7);
+  --card-foreground: #e2e8f0;
+  --surface: rgba(30, 41, 59, 0.5);
+  --surface-foreground: #cbd5e1;
+  --destructive: #f87171;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overscroll-behavior-y: contain;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Dark mode: fondo con gradiente sutil */
+.dark body {
+  background: linear-gradient(180deg, #050816 0%, #0a0e27 30%, #0f0a1a 100%);
+  background-attachment: fixed;
+}
+
+input, textarea {
+  user-select: auto;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLASS CARDS — El estilo principal de la app en dark
+   ═══════════════════════════════════════════════════════════ */
+.glass-card {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.dark .glass-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(148, 163, 184, 0.05);
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(148, 163, 184, 0.06);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHADOWS — Adaptados para cada tema
+   ═══════════════════════════════════════════════════════════ */
+.shadow-premium {
+  box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.3), 0 0 0 1px rgba(99, 102, 241, 0.05);
+}
+
+.shadow-card {
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.03);
+}
+
+.dark .shadow-card {
+  box-shadow:
+    0 4px 16px -4px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(148, 163, 184, 0.06),
+    inset 0 1px 0 rgba(148, 163, 184, 0.04);
+}
+
+.shadow-glow {
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+.dark .shadow-glow {
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.2), 0 0 60px rgba(99, 102, 241, 0.05);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GRADIENT TEXT
+   ═══════════════════════════════════════════════════════════ */
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .gradient-text {
+  background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INPUTS — Mejorados para dark mode
+   ═══════════════════════════════════════════════════════════ */
+.dark input,
+.dark textarea,
+.dark select {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.15);
+  color: #e2e8f0;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #475569;
+}
+
+.dark input:focus,
+.dark textarea:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CARDS — Estilo unificado
+   ═══════════════════════════════════════════════════════════ */
+.card-filled {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--card-foreground);
+}
+
+.dark .card-filled {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  box-shadow:
+    0 4px 16px -4px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(148, 163, 184, 0.04);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SURFACE — Para superficies intermedias (header, nav)
+   ═══════════════════════════════════════════════════════════ */
+.surface-blur {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.dark .surface-blur {
+  background: rgba(5, 8, 22, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-color: rgba(148, 163, 184, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMACIONES
+   ═══════════════════════════════════════════════════════════ */
+* {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+.btn-premium {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+  transition: all 0.3s ease;
+}
+
+.btn-premium:active {
+  transform: scale(0.95);
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PARTÍCULAS DE FONDO para dark mode
+   ═══════════════════════════════════════════════════════════ */
+.dark-bg-particles {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.dark-bg-particles::before {
+  content: '';
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+  top: -200px;
+  right: -200px;
+  animation: float 8s ease-in-out infinite;
+}
+
+.dark-bg-particles::after {
+  content: '';
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.05) 0%, transparent 70%);
+  bottom: -150px;
+  left: -150px;
+  animation: float 10s ease-in-out infinite reverse;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BADGES Y STATUS — Mejor contraste en dark
+   ═══════════════════════════════════════════════════════════ */
+.dark .badge-green {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.dark .badge-yellow {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+
+.dark .badge-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.dark .badge-gray {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHECKBOX en dark — Mejor visibilidad
+   ═══════════════════════════════════════════════════════════ */
+.dark input[type="checkbox"] {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR para Firefox
+   ═══════════════════════════════════════════════════════════ */
+* {
+  scrollbar-width: none;
+}

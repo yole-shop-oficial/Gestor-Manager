@@ -1,0 +1,20 @@
+# ============================================================
+# VARIABLES DE ENTORNO PARA VERCEL
+# ============================================================
+# Cómo importar en Vercel:
+#   1. Ve a tu proyecto en Vercel → Settings → Environment Variables
+#   2. Puedes importar este archivo o agregarlas una por una
+#   3. Para importar: clic en "Import .env File" y sube este archivo
+#
+# ⚠️ NO subas este archivo a GitHub
+# ⚠️ Los valores son los de tus proyectos Supabase
+# ⚠️ Ya NO se necesitan variables VITE_ (Next.js usa NEXT_PUBLIC_)
+# ============================================================
+
+# ── Proyecto 1 (Auth + Identidad) ──
+NEXT_PUBLIC_SUPABASE_URL_1=PEGAR_AQUI_URL_PROYECTO_1
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1=PEGAR_AQUI_ANON_KEY_PROYECTO_1
+
+# ── Proyecto 2 (Business) ──
+NEXT_PUBLIC_SUPABASE_URL_2=PEGAR_AQUI_URL_PROYECTO_2
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2=PEGAR_AQUI_ANON_KEY_PROYECTO_2

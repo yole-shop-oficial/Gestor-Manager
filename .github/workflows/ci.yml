@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      CI: "true"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Next.js usa NEXT_PUBLIC_ para variables del cliente
+      NEXT_PUBLIC_SUPABASE_URL_1: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL_1 }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1 }}
+      NEXT_PUBLIC_SUPABASE_URL_2: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL_2 }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2 }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        run: npm install
+
+      - name: Next typegen
+        run: npx next typegen
+
+      - name: TypeScript check
+        run: npx tsc --noEmit --pretty false
+
+      - name: Build
+        run: npm run build

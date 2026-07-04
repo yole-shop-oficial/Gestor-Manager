@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cambio de correo — YOLE SHOP</title>
+  <style>
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    body { margin: 0; padding: 0; width: 100% !important; background-color: #0f0a1a; }
+
+    .email-bg {
+      background: linear-gradient(135deg, #0f0a1a 0%, #1a1145 40%, #2d1b69 100%);
+      min-height: 100vh; padding: 40px 20px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      max-width: 520px;
+      margin: 0 auto; padding: 48px 40px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 120px rgba(99,102,241,0.1);
+    }
+
+    .icon-wrap { text-align: center; margin-bottom: 24px; }
+    .icon-circle {
+      display: inline-block;
+      width: 72px; height: 72px;
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      border-radius: 20px;
+      line-height: 72px; font-size: 36px;
+      box-shadow: 0 0 40px rgba(59,130,246,0.3);
+    }
+
+    .title {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 24px; font-weight: 800; color: #fff;
+      text-align: center; margin: 0 0 8px;
+    }
+    .subtitle {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 15px; color: rgba(255,255,255,0.6);
+      text-align: center; margin: 0 0 32px; line-height: 1.5;
+    }
+
+    .btn-wrap { text-align: center; margin: 32px 0; }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      color: #fff !important;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 16px; font-weight: 700;
+      text-decoration: none;
+      padding: 16px 48px; border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(59,130,246,0.35), 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .divider {
+      border: none; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+      margin: 28px 0;
+    }
+
+    .warning-box {
+      background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 16px;
+      padding: 16px 20px;
+      text-align: center;
+    }
+    .warning-text {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.5;
+    }
+    .warning-text strong { color: #3b82f6; }
+
+    .footer { text-align: center; margin-top: 32px; }
+    .footer-text {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 12px; color: rgba(255,255,255,0.35); line-height: 1.6;
+    }
+
+    .fallback {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 11px; color: rgba(255,255,255,0.3);
+      text-align: center; word-break: break-all; line-height: 1.6; margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-bg">
+    <div class="card">
+
+      <div class="icon-wrap">
+        <div class="icon-circle">📧</div>
+      </div>
+
+      <h1 class="title">Confirmar cambio de correo</h1>
+      <p class="subtitle">
+        Has solicitado cambiar tu correo electrónico en YOLE SHOP. Confirma el nuevo correo para completar el cambio.
+      </p>
+
+      <div class="btn-wrap">
+        <a href="{{ .ConfirmationURL }}" class="btn" target="_blank">
+          📧 Confirmar nuevo correo
+        </a>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="warning-box">
+        <p class="warning-text">
+          🔒 <strong>Si no solicitaste este cambio</strong>, ignora este correo.<br />
+          Tu correo actual seguirá activo y sin cambios.
+        </p>
+      </div>
+
+      <p class="fallback">
+        Si el botón no funciona, copia este enlace en tu navegador:<br />
+        <a href="{{ .ConfirmationURL }}" style="color: rgba(59,130,246,0.6);">{{ .ConfirmationURL }}</a>
+      </p>
+
+    </div>
+
+    <div class="footer">
+      <p class="footer-text">
+        YOLE SHOP APP · Seguridad de cuenta<br />
+        Este correo fue enviado a <strong style="color: rgba(255,255,255,0.5);">{{ .Email }}</strong>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

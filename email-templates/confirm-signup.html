@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Confirma tu cuenta — YOLE SHOP</title>
+  <!--[if mso]>
+  <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+  <![endif]-->
+  <style>
+    /* RESET */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    body { margin: 0; padding: 0; width: 100% !important; height: 100% !important; background-color: #0f0a1a; }
+
+    /* DARK GRADIENT BG */
+    .email-bg {
+      background: linear-gradient(135deg, #0f0a1a 0%, #1a1145 40%, #2d1b69 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    /* GLASS CARD */
+    .card {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 48px 40px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 120px rgba(99, 102, 241, 0.1);
+    }
+
+    /* LOGO */
+    .logo-wrap {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .logo-star {
+      display: inline-block;
+      width: 72px; height: 72px;
+      background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+      border-radius: 20px;
+      line-height: 72px;
+      font-size: 36px;
+      box-shadow: 0 0 40px rgba(99, 102, 241, 0.4), 0 0 80px rgba(168, 85, 247, 0.2);
+    }
+
+    /* TYPOGRAPHY */
+    .title {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: #ffffff;
+      text-align: center;
+      margin: 0 0 8px;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.6);
+      text-align: center;
+      margin: 0 0 36px;
+      line-height: 1.5;
+    }
+
+    /* CTA BUTTON */
+    .btn-wrap {
+      text-align: center;
+      margin: 36px 0;
+    }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+      color: #ffffff !important;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      text-decoration: none;
+      padding: 16px 48px;
+      border-radius: 16px;
+      letter-spacing: 0.3px;
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.4), 0 2px 8px rgba(0,0,0,0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(99, 102, 241, 0.5), 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    /* DIVIDER */
+    .divider {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+      margin: 32px 0;
+    }
+
+    /* FEATURES */
+    .features {
+      text-align: center;
+      margin: 24px 0;
+    }
+    .feature-item {
+      display: inline-block;
+      width: 30%;
+      text-align: center;
+      vertical-align: top;
+      margin: 0 1.5%;
+    }
+    .feature-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .feature-label {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 11px;
+      color: rgba(255,255,255,0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* FOOTER */
+    .footer {
+      text-align: center;
+      margin-top: 32px;
+    }
+    .footer-text {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.6;
+    }
+    .footer-link {
+      color: rgba(168, 85, 247, 0.7);
+      text-decoration: none;
+    }
+
+    /* FALLBACK LINK */
+    .fallback {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+      word-break: break-all;
+      line-height: 1.6;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-bg">
+    <div class="card">
+
+      <!-- LOGO -->
+      <div class="logo-wrap">
+        <div class="logo-star">⭐</div>
+      </div>
+
+      <!-- HEADING -->
+      <h1 class="title">¡Bienvenido a YOLE SHOP!</h1>
+      <p class="subtitle">
+        Tu cuenta está casi lista. Solo necesitas confirmar tu correo electrónico para comenzar a gestionar pedidos y comisiones.
+      </p>
+
+      <!-- CTA -->
+      <div class="btn-wrap">
+        <a href="{{ .ConfirmationURL }}" class="btn" target="_blank">
+          ✅ Confirmar mi cuenta
+        </a>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- FEATURES PREVIEW -->
+      <div class="features">
+        <div class="feature-item">
+          <div class="feature-icon">📦</div>
+          <div class="feature-label">Pedidos</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">💰</div>
+          <div class="feature-label">Comisiones</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">💬</div>
+          <div class="feature-label">Chat Admin</div>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- INFO -->
+      <p class="subtitle" style="margin-bottom: 0;">
+        Una vez confirmado, un administrador activará tu cuenta y podrás acceder a todas las funciones de la app.
+      </p>
+
+      <!-- FALLBACK LINK -->
+      <p class="fallback">
+        Si el botón no funciona, copia este enlace en tu navegador:<br />
+        <a href="{{ .ConfirmationURL }}" style="color: rgba(168,85,247,0.6);">{{ .ConfirmationURL }}</a>
+      </p>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <p class="footer-text">
+        YOLE SHOP APP · La app de gestión para gestores<br />
+        Este correo fue enviado a <strong style="color: rgba(255,255,255,0.5);">{{ .Email }}</strong><br />
+        Si no creaste esta cuenta, ignora este correo.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
