@@ -9,6 +9,8 @@ export interface ConnectivityResult {
   project1: boolean;
   project2: boolean;
   error?: string;
+  /** Diagnóstico detallado para mostrar en pantalla */
+  details: string[];
 }
 
 const STORAGE_KEY = "yole-connectivity-status";
@@ -17,18 +19,12 @@ const FETCH_TIMEOUT_MS = 8000; // 8 segundos
 
 /**
  * Verifica si una URL de Supabase es alcanzable.
- *
- * FIX vs versión anterior: Ya NO usa `mode: "no-cors"`.
- * El problema era que `no-cors` SIEMPRE resuelve como respuesta opaca
- * (type: "opaque", status: 0), lo que significa que NUNCA falla,
- * incluso si el proyecto está pausado o la URL es incorrecta.
- *
- * Ahora usamos `mode: "cors"` (por defecto) con timeout.
- * Si el proyecto Supabase está activo, responderá con CORS headers
- * (todos los endpoints de Supabase los tienen).
- * Si está caído, pausado, o la URL es incorrecta → fetch lanza error.
  */
-async function checkSupabaseUrl(url: string): Promise<boolean> {
+async function checkSupabaseUrl(url: string): Promise<{ ok: boolean; detail: string }> {
+  if (!url) {
+    return { ok: false, detail: "URL vacía — variable de entorno no configurada en Vercel" };
+  }
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -39,152 +35,136 @@ async function checkSupabaseUrl(url: string): Promise<boolean> {
     });
 
     clearTimeout(timeoutId);
-
-    // Cualquier respuesta (200, 401, 404, etc.) significa que el
-    // servidor está levantado. Solo los errores 5xx son preocupantes,
-    // pero incluso esos indican que el proyecto existe.
-    return response.status < 500;
+    return { ok: response.status < 500, detail: `HTTP ${response.status} — servidor responde` };
   } catch (err: any) {
-    // Network error, timeout, o CORS failure → proyecto no disponible
     const reason = err?.name === "AbortError"
-      ? "timeout (>8s)"
-      : (err?.message || "network error");
-    console.warn(
-      `[CONNECTIVITY] Proyecto en ${url.substring(0, 30)}... no disponible:`,
-      reason
-    );
-    return false;
+      ? `Timeout (>8s) — servidor no responde o está pausado`
+      : (err?.message || "Error de red");
+    return { ok: false, detail: reason };
   }
 }
 
 /**
- * Realiza un "ping" a ambos proyectos de Supabase.
- *
- * Estrategia mejorada:
- * 1. Si tenemos un cliente Supabase activo, usar getSession() (no requiere red)
- * 2. Si no, verificar la URL directamente con fetch (SIN no-cors)
- * 3. Cada catch tiene logging explícito
+ * Realiza un diagnóstico completo de conectividad.
+ * IMPORTANTE: NUNCA bloquea — siempre retorna un resultado.
+ * Si algo falla, lo marca pero la app puede seguir funcionando.
  */
 export async function checkSupabaseConnectivity(): Promise<ConnectivityResult> {
   const result: ConnectivityResult = {
     ok: false,
     project1: false,
     project2: false,
+    details: [],
   };
 
+  const log = (msg: string) => result.details.push(msg);
+
+  // ─── Verificar variables de entorno ───
+  log("=== DIAGNÓSTICO DE CONECTIVIDAD ===");
+  log(`Hora: ${new Date().toLocaleString("es-CU", { timeZone: "America/Havana" })}`);
+  log(`Online: ${navigator.onLine ? "Sí" : "No"}`);
+  log(`URL navegador: ${window.location.href}`);
+  log("");
+
+  // Leer env vars directamente para diagnóstico
+  const url1 = process.env.NEXT_PUBLIC_SUPABASE_URL_1;
+  const key1 = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1;
+  const url2 = process.env.NEXT_PUBLIC_SUPABASE_URL_2;
+  const key2 = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2;
+
+  log("--- Variables de entorno ---");
+  log(`P1 URL: ${url1 ? url1.substring(0, 35) + "..." : "❌ NO CONFIGURADA"}`);
+  log(`P1 KEY: ${key1 ? key1.substring(0, 12) + "..." : "❌ NO CONFIGURADA"}`);
+  log(`P2 URL: ${url2 ? url2.substring(0, 35) + "..." : "❌ NO CONFIGURADA (opcional)"}`);
+  log(`P2 KEY: ${key2 ? key2.substring(0, 12) + "..." : "❌ NO CONFIGURADA (opcional)"}`);
+  log("");
+
+  // ─── Proyecto 1 ───
+  log("--- Proyecto 1 (Auth) ---");
   try {
-    // ─── Proyecto 1 ───
     const authClient = getBrowserAuthClient();
     if (authClient) {
-      try {
-        // getSession() lee de localStorage — no requiere red,
-        // pero confirma que el cliente está funcional
-        const { error: authError } = await authClient.auth.getSession();
-        if (!authError) {
-          result.project1 = true;
-        } else {
-          console.error(
-            "[CONNECTIVITY] Error getSession() Proyecto 1:",
-            authError.message
-          );
-          // El cliente existe pero getSession falló → verificar por URL
-          result.project1 = await checkSupabaseUrl(
-            process.env.NEXT_PUBLIC_SUPABASE_URL_1 || ""
-          );
-        }
-      } catch (err: any) {
-        console.error(
-          "[CONNECTIVITY] Excepción verificando Proyecto 1:",
-          err?.message || err
-        );
-        // Fallback a verificación por URL
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL_1 || "";
-        if (url) {
-          result.project1 = await checkSupabaseUrl(url);
-        }
+      log("✅ Cliente P1 creado");
+      const { error: authError } = await authClient.auth.getSession();
+      if (!authError) {
+        result.project1 = true;
+        log("✅ getSession() OK — P1 conectado");
+      } else {
+        log(`⚠️ getSession() error: ${authError.message}`);
+        // Verificar por URL
+        const check = await checkSupabaseUrl(url1 || "");
+        log(`Fetch P1: ${check.detail}`);
+        result.project1 = check.ok;
       }
     } else {
-      // No hay cliente → verificar la URL directamente
-      const config1 = getProjectConfig(1);
-      if (config1.url) {
-        result.project1 = await checkSupabaseUrl(config1.url);
-      } else {
-        console.warn(
-          "[CONNECTIVITY] Proyecto 1: no hay cliente ni URL configurada"
-        );
-      }
+      log("❌ Cliente P1 NO disponible");
+      const check = await checkSupabaseUrl(url1 || "");
+      log(`Fetch P1: ${check.detail}`);
+      result.project1 = check.ok;
     }
+  } catch (err: any) {
+    log(`❌ Excepción P1: ${err?.message || err}`);
+    const check = await checkSupabaseUrl(url1 || "");
+    log(`Fetch P1 fallback: ${check.detail}`);
+    result.project1 = check.ok;
+  }
 
-    // ─── Proyecto 2 ───
+  // ─── Proyecto 2 ───
+  log("");
+  log("--- Proyecto 2 (Business) ---");
+  try {
     const businessClient = getBrowserBusinessClient();
     if (businessClient) {
-      try {
-        // Consulta ligera: si responde (error de permisos o no) = hay conexión
-        const { error: busError } = await businessClient
-          .from("round_robin_counter")
-          .select("id")
-          .limit(1);
+      log("✅ Cliente P2 creado");
+      const { error: busError } = await businessClient
+        .from("round_robin_counter")
+        .select("id")
+        .limit(1);
 
-        if (busError) {
-          // Si el error es de red (fetch), NO hay conexión
-          const msg = busError.message?.toLowerCase() || "";
-          if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed")) {
-            result.project2 = false;
-            console.error(
-              "[CONNECTIVITY] Proyecto 2 - error de red:",
-              busError.message
-            );
-          } else {
-            // Error de permisos, tabla no existe, etc. → servidor SÍ responde
-            result.project2 = true;
-          }
+      if (busError) {
+        const msg = busError.message?.toLowerCase() || "";
+        if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed")) {
+          result.project2 = false;
+          log(`❌ P2 error de red: ${busError.message}`);
         } else {
+          // Error de permisos/tabla = servidor responde
           result.project2 = true;
+          log(`✅ P2 servidor responde (error esperado: ${busError.message.substring(0, 50)})`);
         }
-      } catch (err: any) {
-        console.error(
-          "[CONNECTIVITY] Excepción verificando Proyecto 2:",
-          err?.message || err
-        );
-        // Fallback a verificación por URL
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL_2 || "";
-        if (url) {
-          result.project2 = await checkSupabaseUrl(url);
-        }
+      } else {
+        result.project2 = true;
+        log("✅ P2 conectado");
       }
     } else {
-      // No hay cliente → verificar la URL directamente
-      const config2 = getProjectConfig(2);
-      if (config2.url) {
-        result.project2 = await checkSupabaseUrl(config2.url);
-      } else {
-        console.warn(
-          "[CONNECTIVITY] Proyecto 2: no hay cliente ni URL configurada (puede ser normal si solo usas Proyecto 1)"
-        );
-        // Si P2 no está configurado, no lo marcamos como error
-        // Solo P1 es obligatorio
-        result.project2 = true;
-      }
+      log("⚠️ Cliente P2 NO disponible (puede ser normal si solo usas P1)");
+      // Si P2 no está configurado, lo marcamos como OK (no es obligatorio)
+      result.project2 = true;
     }
-
-    // Resultado general: OK si al menos P1 funciona
-    // (P2 puede no estar configurado y eso es válido)
-    result.ok = result.project1;
-
-    if (!result.ok) {
-      result.error = `No se pudo conectar con el Proyecto Auth (1). ` +
-        `Verifica que el proyecto de Supabase esté activo y las variables de entorno sean correctas.`;
-    }
-
-    return result;
   } catch (err: any) {
-    console.error(
-      "[CONNECTIVITY] Error inesperado en checkSupabaseConnectivity:",
-      err
-    );
-    result.error = err?.message || "Error desconocido de red";
-    return result;
+    log(`❌ Excepción P2: ${err?.message || err}`);
+    result.project2 = true; // No bloquear por P2
   }
+
+  // ─── Resultado ───
+  log("");
+  log("--- Resultado ---");
+  log(`P1: ${result.project1 ? "✅ OK" : "❌ FALLO"}`);
+  log(`P2: ${result.project2 ? "✅ OK" : "❌ FALLO"}`);
+
+  // Solo P1 es obligatorio para que la app funcione
+  result.ok = result.project1;
+
+  if (!result.ok) {
+    result.error = "No se pudo conectar con el Proyecto Auth (1). Revisa las variables de entorno en Vercel.";
+    log("❌ APP BLOQUEADA — P1 no disponible");
+  } else {
+    log("✅ App puede funcionar");
+  }
+
+  // Imprimir todo en consola también (para quien tenga acceso)
+  result.details.forEach((line) => console.log(`[CONNECTIVITY] ${line}`));
+
+  return result;
 }
 
 export function getCachedConnectivity() {
@@ -200,10 +180,7 @@ export function getCachedConnectivity() {
     }
     return null;
   } catch (err: any) {
-    console.warn(
-      "[CONNECTIVITY] Error leyendo cache de conectividad:",
-      err?.message || err
-    );
+    console.warn("[CONNECTIVITY] Error leyendo cache:", err?.message || err);
     return null;
   }
 }
@@ -214,14 +191,11 @@ export function setCachedConnectivity(status: ConnectivityResult) {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        status,
+        status: { ...status, details: [] }, // No cachear details (son del momento)
         timestamp: Date.now(),
       })
     );
   } catch (err: any) {
-    console.warn(
-      "[CONNECTIVITY] Error guardando cache de conectividad:",
-      err?.message || err
-    );
+    console.warn("[CONNECTIVITY] Error guardando cache:", err?.message || err);
   }
 }

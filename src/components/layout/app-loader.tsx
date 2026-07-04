@@ -1,17 +1,25 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { YoleLogoAnimated } from "@/components/ui/YoleLogo";
-import { AlertTriangle, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, RefreshCw, Wifi, WifiOff, ChevronDown, ChevronUp } from "lucide-react";
+import { getClientDiagnostics } from "@/services/supabase/clientFactory";
 
 interface Props {
   error?: string | null;
   onRetry?: () => void;
   message?: string;
+  /** Diagnóstico técnico opcional para mostrar en pantalla */
+  details?: string[];
 }
 
-export function AppLoader({ error, onRetry, message }: Props) {
+export function AppLoader({ error, onRetry, message, details }: Props) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Obtener diagnóstico de clientes Supabase activos
+  const clientDiag = typeof window !== "undefined" ? getClientDiagnostics() : { totalClients: 0, storageKeys: [] };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#0a0e27] via-[#1a1040] to-[#0a0e27] text-white relative overflow-hidden">
       {/* Partículas de fondo */}
@@ -20,11 +28,8 @@ export function AppLoader({ error, onRetry, message }: Props) {
         <div className="absolute top-[25%] right-[20%] w-1.5 h-1.5 bg-purple-400/30 rounded-full animate-pulse" style={{ animationDelay: "0.5s" }} />
         <div className="absolute bottom-[30%] left-[25%] w-1 h-1 bg-pink-400/30 rounded-full animate-pulse" style={{ animationDelay: "1s" }} />
         <div className="absolute top-[60%] right-[10%] w-2 h-2 bg-indigo-300/20 rounded-full animate-pulse" style={{ animationDelay: "1.5s" }} />
-        <div className="absolute bottom-[15%] left-[60%] w-1.5 h-1.5 bg-purple-300/25 rounded-full animate-pulse" style={{ animationDelay: "0.8s" }} />
-        {/* Orbes grandes */}
         <div className="absolute -top-32 -right-32 w-80 h-80 bg-indigo-600/8 rounded-full blur-3xl" />
         <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-purple-600/8 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-64 h-64 bg-pink-600/5 rounded-full blur-3xl" />
       </div>
 
       <AnimatePresence mode="wait">
@@ -34,9 +39,8 @@ export function AppLoader({ error, onRetry, message }: Props) {
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center gap-6 px-8 max-w-sm text-center"
+            className="relative z-10 flex flex-col items-center gap-4 px-6 max-w-sm text-center"
           >
-            {/* Icono de error */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -47,11 +51,8 @@ export function AppLoader({ error, onRetry, message }: Props) {
             </motion.div>
 
             <div className="space-y-2">
-              <h2 className="text-xl font-bold text-red-300">Sin conexión</h2>
+              <h2 className="text-xl font-bold text-red-300">Error de conexión</h2>
               <p className="text-sm text-white/60 leading-relaxed">{error}</p>
-              <p className="text-xs text-white/40 mt-2">
-                Verifica tu conexión a internet y que las URLs de Supabase sean correctas.
-              </p>
             </div>
 
             <motion.button
@@ -60,8 +61,46 @@ export function AppLoader({ error, onRetry, message }: Props) {
               className="flex items-center gap-2 px-8 py-3.5 bg-white text-indigo-700 rounded-2xl text-sm font-bold shadow-2xl"
             >
               <RefreshCw className="w-4 h-4" />
-              Reintentar conexión
+              Reintentar
             </motion.button>
+
+            {/* Diagnóstico expandible */}
+            <button
+              onClick={() => setShowDetails(!showDetails)}
+              className="flex items-center gap-1 text-[10px] text-white/30 uppercase font-bold mt-2"
+            >
+              {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              Diagnóstico técnico
+            </button>
+
+            {showDetails && (
+              <div className="w-full p-3 bg-black/60 rounded-xl border border-white/10 max-h-48 overflow-y-auto text-left">
+                <p className="text-[10px] font-mono text-green-400 mb-1">
+                  Clientes Supabase: {clientDiag.totalClients} ({clientDiag.storageKeys.join(", ") || "ninguno"})
+                </p>
+                <p className="text-[10px] font-mono text-blue-400 mb-1">
+                  Online: {typeof navigator !== "undefined" ? (navigator.onLine ? "Sí" : "No") : "?"}
+                </p>
+                <p className="text-[10px] font-mono text-yellow-400 mb-1">
+                  URL P1: {typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_1
+                    ? process.env.NEXT_PUBLIC_SUPABASE_URL_1.substring(0, 35) + "..."
+                    : "❌ NO CONFIGURADA"}
+                </p>
+                <p className="text-[10px] font-mono text-yellow-400 mb-1">
+                  KEY P1: {typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1
+                    ? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1.substring(0, 12) + "..."
+                    : "❌ NO CONFIGURADA"}
+                </p>
+                <p className="text-[10px] font-mono text-purple-400 mb-1">
+                  URL P2: {typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_2
+                    ? process.env.NEXT_PUBLIC_SUPABASE_URL_2.substring(0, 35) + "..."
+                    : "No configurada (opcional)"}
+                </p>
+                {details && details.map((line, i) => (
+                  <p key={i} className="text-[10px] font-mono text-green-400 whitespace-pre-wrap">{line}</p>
+                ))}
+              </div>
+            )}
           </motion.div>
         ) : (
           <motion.div
@@ -71,7 +110,6 @@ export function AppLoader({ error, onRetry, message }: Props) {
             exit={{ opacity: 0 }}
             className="relative z-10 flex flex-col items-center gap-6"
           >
-            {/* Logo animado */}
             <YoleLogoAnimated size={100} />
 
             <div className="text-center space-y-2">
@@ -98,7 +136,7 @@ export function AppLoader({ error, onRetry, message }: Props) {
               />
             </motion.div>
 
-            {/* Indicador de conexión */}
+            {/* Info de conexión */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -108,6 +146,11 @@ export function AppLoader({ error, onRetry, message }: Props) {
               <Wifi className="w-3 h-3" />
               <span className="text-[10px]">Conectando...</span>
             </motion.div>
+
+            {/* Mini diagnóstico siempre visible */}
+            <div className="text-[9px] text-white/15 font-mono text-center">
+              <p>Clientes: {clientDiag.totalClients} | Online: {typeof navigator !== "undefined" ? (navigator.onLine ? "✓" : "✗") : "?"}</p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
