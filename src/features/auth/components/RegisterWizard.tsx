@@ -220,9 +220,37 @@ export function RegisterWizard() {
                       </button>
 
                       {showTech && (
-                        <pre className="mt-2 p-2 bg-black text-green-400 text-[10px] rounded-lg overflow-x-auto whitespace-pre-wrap max-h-40">
-                          {technicalDetails.join("\n")}
-                        </pre>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const text = technicalDetails.join("\n");
+                              navigator.clipboard.writeText(text).then(() => {
+                                const btn = document.getElementById("copy-btn-reg");
+                                if (btn) btn.textContent = "✅ Copiado!";
+                                setTimeout(() => { if (btn) btn.textContent = "📋 Copiar"; }, 2000);
+                              }).catch(() => {
+                                // Fallback para navegadores sin clipboard API
+                                const ta = document.createElement("textarea");
+                                ta.value = text;
+                                document.body.appendChild(ta);
+                                ta.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(ta);
+                                const btn = document.getElementById("copy-btn-reg");
+                                if (btn) btn.textContent = "✅ Copiado!";
+                                setTimeout(() => { if (btn) btn.textContent = "📋 Copiar"; }, 2000);
+                              });
+                            }}
+                            id="copy-btn-reg"
+                            className="absolute top-2 right-2 text-[9px] bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg font-bold z-10"
+                          >
+                            📋 Copiar
+                          </button>
+                          <pre className="mt-2 p-2 bg-black text-green-400 text-[10px] rounded-lg overflow-x-auto whitespace-pre-wrap max-h-40">
+                            {technicalDetails.join("\n")}
+                          </pre>
+                        </div>
                       )}
                     </div>
                   )}

@@ -84,7 +84,31 @@ export function AuthGate({ children }: Props) {
         </button>
 
         {showDetails && connResult.details.length > 0 && (
-          <div className="w-full max-w-sm p-3 bg-black/50 rounded-xl border border-white/10 mb-4 max-h-48 overflow-y-auto">
+          <div className="relative w-full max-w-sm p-3 bg-black/50 rounded-xl border border-white/10 mb-4 max-h-48 overflow-y-auto">
+            <button
+              onClick={() => {
+                const text = connResult!.details.join("\n");
+                navigator.clipboard.writeText(text).then(() => {
+                  const btn = document.getElementById("copy-btn-conn");
+                  if (btn) btn.textContent = "✅ Copiado!";
+                  setTimeout(() => { if (btn) btn.textContent = "📋 Copiar"; }, 2000);
+                }).catch(() => {
+                  const ta = document.createElement("textarea");
+                  ta.value = text;
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(ta);
+                  const btn = document.getElementById("copy-btn-conn");
+                  if (btn) btn.textContent = "✅ Copiado!";
+                  setTimeout(() => { if (btn) btn.textContent = "📋 Copiar"; }, 2000);
+                });
+              }}
+              id="copy-btn-conn"
+              className="absolute top-2 right-2 text-[9px] bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg font-bold z-10"
+            >
+              📋 Copiar
+            </button>
             {connResult.details.map((line, i) => (
               <p key={i} className="text-[10px] font-mono text-green-400 whitespace-pre-wrap">
                 {line}

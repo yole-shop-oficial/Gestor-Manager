@@ -74,7 +74,39 @@ export function AppLoader({ error, onRetry, message, details }: Props) {
             </button>
 
             {showDetails && (
-              <div className="w-full p-3 bg-black/60 rounded-xl border border-white/10 max-h-48 overflow-y-auto text-left">
+              <div className="relative w-full p-3 bg-black/60 rounded-xl border border-white/10 max-h-48 overflow-y-auto text-left">
+                <button
+                  onClick={() => {
+                    const lines = [
+                      `Clientes Supabase: ${clientDiag.totalClients} (${clientDiag.storageKeys.join(", ") || "ninguno"})`,
+                      `Online: ${typeof navigator !== "undefined" ? (navigator.onLine ? "Sí" : "No") : "?"}`,
+                      `URL P1: ${typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_1 ? process.env.NEXT_PUBLIC_SUPABASE_URL_1.substring(0, 35) + "..." : "❌ NO CONFIGURADA"}`,
+                      `KEY P1: ${typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1 ? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1.substring(0, 12) + "..." : "❌ NO CONFIGURADA"}`,
+                      `URL P2: ${typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_2 ? process.env.NEXT_PUBLIC_SUPABASE_URL_2.substring(0, 35) + "..." : "No configurada (opcional)"}`,
+                      ...(details || []),
+                    ];
+                    const text = lines.join("\n");
+                    navigator.clipboard.writeText(text).then(() => {
+                      const btn = document.getElementById("copy-btn-loader");
+                      if (btn) btn.textContent = "✅ Copiado!";
+                      setTimeout(() => { if (btn) btn.textContent = "📋 Copiar"; }, 2000);
+                    }).catch(() => {
+                      const ta = document.createElement("textarea");
+                      ta.value = text;
+                      document.body.appendChild(ta);
+                      ta.select();
+                      document.execCommand("copy");
+                      document.body.removeChild(ta);
+                      const btn = document.getElementById("copy-btn-loader");
+                      if (btn) btn.textContent = "✅ Copiado!";
+                      setTimeout(() => { if (btn) btn.textContent = "📋 Copiar"; }, 2000);
+                    });
+                  }}
+                  id="copy-btn-loader"
+                  className="absolute top-2 right-2 text-[9px] bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg font-bold z-10"
+                >
+                  📋 Copiar
+                </button>
                 <p className="text-[10px] font-mono text-green-400 mb-1">
                   Clientes Supabase: {clientDiag.totalClients} ({clientDiag.storageKeys.join(", ") || "ninguno"})
                 </p>
