@@ -18,9 +18,11 @@ const TTL_MS = 1000 * 60 * 60 * 24; // 24 horas
 const FETCH_TIMEOUT_MS = 8000; // 8 segundos
 
 /**
- * Verifica si una URL de Supabase es alcanzable.
+ * Verifica si un proyecto de Supabase es alcanzable usando la REST API con apikey.
+ * IMPORTANTE: No usar fetch() a la raíz del proyecto porque no tiene CORS headers.
+ * La REST API (/rest/v1/) sí permite cross-origin cuando se envía apikey.
  */
-async function checkSupabaseUrl(url: string): Promise<{ ok: boolean; detail: string }> {
+async function checkSupabaseUrl(url: string, anonKey?: string): Promise<{ ok: boolean; detail: string }> {
   if (!url) {
     return { ok: false, detail: "URL vacía — variable de entorno no configurada en Vercel" };
   }
@@ -29,13 +31,27 @@ async function checkSupabaseUrl(url: string): Promise<{ ok: boolean; detail: str
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(url, {
+    // Usar REST API con apikey header (evita errores CORS)
+    const headers: Record<string, string> = {};
+    if (anonKey) {
+      headers["apikey"] = anonKey;
+      headers["Authorization"] = `Bearer ${anonKey}`;
+    }
+
+    const response = await fetch(`${url}/rest/v1/rpc?select=1`, {
       method: "GET",
+      headers,
       signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
-    return { ok: response.status < 500, detail: `HTTP ${response.status} — servidor responde` };
+
+    // Cualquier respuesta (incluso 404) = servidor activo
+    // Solo 5xx = servidor caído
+    if (response.status < 500) {
+      return { ok: true, detail: `HTTP ${response.status} — servidor activo` };
+    }
+    return { ok: false, detail: `HTTP ${response.status} — error del servidor` };
   } catch (err: any) {
     const reason = err?.name === "AbortError"
       ? `Timeout (>8s) — servidor no responde o está pausado`
@@ -92,19 +108,19 @@ export async function checkSupabaseConnectivity(): Promise<ConnectivityResult> {
       } else {
         log(`⚠️ getSession() error: ${authError.message}`);
         // Verificar por URL
-        const check = await checkSupabaseUrl(url1 || "");
+        const check = await checkSupabaseUrl(url1 || "", key1);
         log(`Fetch P1: ${check.detail}`);
         result.project1 = check.ok;
       }
     } else {
       log("❌ Cliente P1 NO disponible");
-      const check = await checkSupabaseUrl(url1 || "");
+      const check = await checkSupabaseUrl(url1 || "", key1);
       log(`Fetch P1: ${check.detail}`);
       result.project1 = check.ok;
     }
   } catch (err: any) {
     log(`❌ Excepción P1: ${err?.message || err}`);
-    const check = await checkSupabaseUrl(url1 || "");
+    const check = await checkSupabaseUrl(url1 || "", key1);
     log(`Fetch P1 fallback: ${check.detail}`);
     result.project1 = check.ok;
   }

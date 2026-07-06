@@ -10,10 +10,47 @@ import {
 } from "@/services/supabase/roundRobin";
 
 /**
+ * Ping a Supabase project usando su propia API REST (con apikey header).
+ * Esto evita errores de CORS porque la API REST sí permite cross-origin
+ * cuando se envía el header apikey correcto.
+ */
+async function pingSupabase(
+  url: string,
+  anonKey: string
+): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    // Usar /rest/v1/ con apikey header → CORS permitido
+    const res = await fetch(`${url}/rest/v1/round_robin_counter?select=id&limit=1`, {
+      method: "GET",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    // Cualquier respuesta (incluso error de RLS) = servidor activo
+    if (res.status < 500) {
+      return { ok: true, detail: `HTTP ${res.status} — servidor activo` };
+    }
+    return { ok: false, detail: `HTTP ${res.status} — error del servidor` };
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      return { ok: false, detail: "Timeout 10s — no responde" };
+    }
+    return { ok: false, detail: err?.message || "Error de red" };
+  }
+}
+
+/**
  * Registra un nuevo gestor usando ROUND-ROBIN.
- * 
- * v4: Si el proyecto seleccionado no responde (pausado),
- * intenta con el OTRO proyecto automáticamente.
+ *
+ * v5: Ping con apikey header (evita CORS), fallback automático
  */
 export async function registerGestor(
   values: RegisterFormValues,
@@ -31,9 +68,9 @@ export async function registerGestor(
   log(`Email: ${values.email}`);
   log(`Online: ${navigator.onLine}`);
 
-  // ─── PASO 1: Hacer ping a ambos proyectos ───
+  // ─── PASO 1: Hacer ping a ambos proyectos (con apikey) ───
   onProgress("Verificando conexión a bases de datos...");
-  log("PASO 1: Haciendo ping a ambos proyectos...");
+  log("PASO 1: Haciendo ping a ambos proyectos (con apikey)...");
 
   const p1Config = getProjectConfig(1);
   const p2Config = getProjectConfig(2);
@@ -41,38 +78,20 @@ export async function registerGestor(
   let p1Alive = false;
   let p2Alive = false;
 
-  // Ping P1
+  // Ping P1 — usando REST API con apikey (evita CORS)
   if (p1Config.url && p1Config.anonKey) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(p1Config.url, { method: "GET", signal: controller.signal });
-      clearTimeout(timeoutId);
-      p1Alive = res.status < 500;
-      log(`Ping P1: ✅ HTTP ${res.status}`);
-    } catch (err: any) {
-      p1Alive = false;
-      log(`Ping P1: ❌ ${err?.name === "AbortError" ? "Timeout 10s" : err?.message}`);
-      log(`⚠️ Proyecto 1 PAUSADO o inaccesible`);
-    }
+    const result = await pingSupabase(p1Config.url, p1Config.anonKey);
+    p1Alive = result.ok;
+    log(`Ping P1: ${result.ok ? "✅" : "❌"} ${result.detail}`);
   } else {
     log("Ping P1: ⏭️ No configurado");
   }
 
-  // Ping P2
+  // Ping P2 — usando REST API con apikey (evita CORS)
   if (p2Config.url && p2Config.anonKey) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(p2Config.url, { method: "GET", signal: controller.signal });
-      clearTimeout(timeoutId);
-      p2Alive = res.status < 500;
-      log(`Ping P2: ✅ HTTP ${res.status}`);
-    } catch (err: any) {
-      p2Alive = false;
-      log(`Ping P2: ❌ ${err?.name === "AbortError" ? "Timeout 10s" : err?.message}`);
-      log(`⚠️ Proyecto 2 PAUSADO o inaccesible`);
-    }
+    const result = await pingSupabase(p2Config.url, p2Config.anonKey);
+    p2Alive = result.ok;
+    log(`Ping P2: ${result.ok ? "✅" : "❌"} ${result.detail}`);
   } else {
     log("Ping P2: ⏭️ No configurado");
   }
@@ -87,21 +106,14 @@ export async function registerGestor(
 
   if (!p1Alive && !p2Alive) {
     log("❌ NINGÚN proyecto responde");
-    log("");
-    log("SOLUCIÓN:");
-    log("1. Ve a https://supabase.com/dashboard");
-    log("2. Abre CADA proyecto");
-    log("3. Si dice 'Paused' → clic en 'Restore project'");
-    log("4. Espera 2 minutos y vuelve a intentar");
 
     throw Object.assign(
       new Error(
-        "Ambos proyectos de Supabase están pausados o inaccesibles.\n\n" +
-        "SOLUCIÓN:\n" +
-        "1. Ve a supabase.com/dashboard\n" +
-        "2. Abre cada proyecto\n" +
-        "3. Si dice 'Paused' → clic en 'Restore project'\n" +
-        "4. Espera 2 minutos y vuelve a intentar"
+        "No se pudo conectar con los proyectos de Supabase.\n\n" +
+        "Posibles causas:\n" +
+        "1. Proyectos pausados → Ve a supabase.com/dashboard y restaura\n" +
+        "2. Variables de entorno incorrectas → Revisa Vercel\n" +
+        "3. Sin conexión a internet"
       ),
       { diag }
     );
@@ -109,14 +121,12 @@ export async function registerGestor(
 
   // Elegir el que esté vivo, preferir round-robin
   if (p1Alive && p2Alive) {
-    // Ambos funcionan — usar round-robin normal
     try {
       const result = await determineProjectForRegistration();
       project = result.project;
       config = result.config;
       log(`✅ Round-robin seleccionó: P${project}`);
     } catch {
-      // Fallback si el contador falla
       project = 1;
       config = p1Config;
       log(`⚠️ Round-robin falló, usando P1 directamente`);
@@ -136,7 +146,7 @@ export async function registerGestor(
   // ─── PASO 3: Crear cliente y registrar ───
   onProgress(`Creando usuario en Proyecto ${project}...`);
   log(`PASO 3: Creando cliente para P${project}...`);
-  
+
   const supabase = createRegistrationClient(config);
   log(`✅ Cliente creado`);
 
@@ -184,8 +194,7 @@ export async function registerGestor(
     throw Object.assign(
       new Error(
         `Error de red al crear cuenta en P${project}. ` +
-        `El proyecto puede haberse pausado durante el registro. ` +
-        `Intenta de nuevo en unos segundos.`
+        `Verifica tu conexión e intenta de nuevo.`
       ),
       { diag }
     );
@@ -209,12 +218,10 @@ export async function registerGestor(
     ) {
       throw Object.assign(
         new Error(
-          `El Proyecto ${project} no responde (pausado).\n\n` +
-          "SOLUCIÓN:\n" +
-          "1. Ve a supabase.com/dashboard\n" +
-          "2. Abre el proyecto\n" +
-          "3. Si dice 'Paused' → clic en 'Restore project'\n" +
-          "4. Espera 2 minutos y vuelve a intentar"
+          `Error de conexión con Proyecto ${project}.\n\n` +
+          "Posibles causas:\n" +
+          "1. Proyecto pausado → supabase.com/dashboard → Restore\n" +
+          "2. Sin conexión a internet"
         ),
         { diag }
       );
@@ -230,7 +237,7 @@ export async function registerGestor(
       throw Object.assign(new Error("Correo electrónico inválido."), { diag });
     }
     if (message.includes("password")) {
-      throw Object.assign(new Error("La contraseña no cumple los requisitos."), { diag });
+      throw Object.assign(new Error("La contraseña no cumple los requisitos (mínimo 6 caracteres)."), { diag });
     }
 
     throw Object.assign(
@@ -241,15 +248,20 @@ export async function registerGestor(
 
   const user = authData?.user;
   if (!user) {
-    log("❌ signUp devolvió user=null");
+    log("❌ signUp devolvió user=null — se envió email de confirmación");
+    // Con autoconfirm activo, user siempre debería volver
+    // Pero si no está autoconfirmado, user=null hasta que confirme email
     throw Object.assign(
-      new Error("No se pudo crear el usuario. Verifica que el proyecto de Supabase esté activo."),
+      new Error(
+        "Se envió un correo de confirmación. Revisa tu email y haz clic en el enlace para activar tu cuenta."
+      ),
       { diag }
     );
   }
 
   log(`✅ USUARIO CREADO: ${user.id}`);
-  log(`Email confirmado: ${user.email_confirmed_at || "Pendiente (revisa tu correo)"}`);
+  log(`Email: ${user.email}`);
+  log(`Confirmado: ${user.email_confirmed_at ? "Sí" : "Pendiente (revisa tu correo)"}`);
 
   // ─── PASO 5: Incrementar contador ───
   try {

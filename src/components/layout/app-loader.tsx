@@ -16,9 +16,15 @@ interface Props {
 
 export function AppLoader({ error, onRetry, message, details }: Props) {
   const [showDetails, setShowDetails] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Obtener diagnóstico de clientes Supabase activos
-  const clientDiag = typeof window !== "undefined" ? getClientDiagnostics() : { totalClients: 0, storageKeys: [] };
+  // Solo leer datos del navegador DESPUÉS del mount para evitar hydration mismatch
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Obtener diagnóstico de clientes Supabase activos (solo en cliente)
+  const clientDiag = mounted ? getClientDiagnostics() : { totalClients: 0, storageKeys: [] };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#0a0e27] via-[#1a1040] to-[#0a0e27] text-white relative overflow-hidden">
@@ -79,7 +85,7 @@ export function AppLoader({ error, onRetry, message, details }: Props) {
                   onClick={() => {
                     const lines = [
                       `Clientes Supabase: ${clientDiag.totalClients} (${clientDiag.storageKeys.join(", ") || "ninguno"})`,
-                      `Online: ${typeof navigator !== "undefined" ? (navigator.onLine ? "Sí" : "No") : "?"}`,
+                      `Online: ${mounted ? (navigator.onLine ? "Sí" : "No") : "..."}`,
                       `URL P1: ${typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_1 ? process.env.NEXT_PUBLIC_SUPABASE_URL_1.substring(0, 35) + "..." : "❌ NO CONFIGURADA"}`,
                       `KEY P1: ${typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1 ? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1.substring(0, 12) + "..." : "❌ NO CONFIGURADA"}`,
                       `URL P2: ${typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_2 ? process.env.NEXT_PUBLIC_SUPABASE_URL_2.substring(0, 35) + "..." : "No configurada (opcional)"}`,
@@ -111,7 +117,7 @@ export function AppLoader({ error, onRetry, message, details }: Props) {
                   Clientes Supabase: {clientDiag.totalClients} ({clientDiag.storageKeys.join(", ") || "ninguno"})
                 </p>
                 <p className="text-[10px] font-mono text-blue-400 mb-1">
-                  Online: {typeof navigator !== "undefined" ? (navigator.onLine ? "Sí" : "No") : "?"}
+                  Online: {mounted ? (navigator.onLine ? "Sí" : "No") : "..."}
                 </p>
                 <p className="text-[10px] font-mono text-yellow-400 mb-1">
                   URL P1: {typeof process !== "undefined" && process.env?.NEXT_PUBLIC_SUPABASE_URL_1
@@ -181,7 +187,7 @@ export function AppLoader({ error, onRetry, message, details }: Props) {
 
             {/* Mini diagnóstico siempre visible */}
             <div className="text-[9px] text-white/15 font-mono text-center">
-              <p>Clientes: {clientDiag.totalClients} | Online: {typeof navigator !== "undefined" ? (navigator.onLine ? "✓" : "✗") : "?"}</p>
+              <p>Clientes: {clientDiag.totalClients} | Online: {mounted ? (navigator.onLine ? "✓" : "✗") : "..."}</p>
             </div>
           </motion.div>
         )}
