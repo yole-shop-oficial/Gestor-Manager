@@ -223,56 +223,36 @@ ANTES: 4+ canales permanentes por usuario → AHORA: 1-2 dinámicos
 Agregar índices faltantes, crear funciones SQL para dashboards, consolidar triggers.
 
 ### Tareas
-- [ ] Ejecutar en AMBOS proyectos (P1 + P2):
-  ```sql
-  -- Índices faltantes
-  CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wallet_entries_order_id ON wallet_entries(order_id);
-  CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_is_read ON notifications(user_id, is_read) WHERE is_read = false;
-  CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_messages_conversation ON messages(sender_id, recipient_id, created_at DESC);
-  
-  -- Función: dashboard gestor en 1 query
-  CREATE OR REPLACE FUNCTION get_gestor_dashboard(p_manager_id uuid)
-  RETURNS JSON AS $$
-  DECLARE
-    result json;
-  BEGIN
-    SELECT json_build_object(
-      'total_orders', (SELECT count(*) FROM orders WHERE manager_id = p_manager_id),
-      'pending_orders', (SELECT count(*) FROM orders WHERE manager_id = p_manager_id AND status = 'pending'),
-      'sold_orders', (SELECT count(*) FROM orders WHERE manager_id = p_manager_id AND status = 'sold'),
-      'balance', COALESCE((SELECT sum(amount) FROM wallet_entries WHERE manager_id = p_manager_id), 0)
-    ) INTO result;
-    RETURN result;
-  END;
-  $$ LANGUAGE plpgsql SECURITY DEFINER;
-  
-  -- Función: dashboard admin en 1 query
-  CREATE OR REPLACE FUNCTION get_admin_dashboard()
-  RETURNS JSON AS $$
-  DECLARE
-    result json;
-  BEGIN
-    SELECT json_build_object(
-      'total_users', (SELECT count(*) FROM profiles),
-      'pending_users', (SELECT count(*) FROM profiles WHERE status = 'pending'),
-      'active_users', (SELECT count(*) FROM profiles WHERE status = 'active'),
-      'total_orders', (SELECT count(*) FROM orders),
-      'pending_orders', (SELECT count(*) FROM orders WHERE status = 'pending'),
-      'pending_payouts', (SELECT count(*) FROM payout_requests WHERE status = 'pending')
-    ) INTO result;
-    RETURN result;
-  END;
-  $$ LANGUAGE plpgsql SECURITY DEFINER;
-  ```
-- [ ] Actualizar `GestorDashboard` para usar `supabase.rpc('get_gestor_dashboard', { p_manager_id: userId })`
-- [ ] Actualizar `admin/page.tsx` para usar `supabase.rpc('get_admin_dashboard')`
-- [ ] Agregar DELETE policy en Storage:
-  ```sql
-  CREATE POLICY "Authenticated users can delete their order images"
-    ON storage.objects FOR DELETE
-    USING (auth.uid()::text = (storage.foldername(name))[1]);
-  ```
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Ejecutar en AMBOS proyectos (P1 + P2):
+  - `idx_wallet_entries_order_id` ON wallet_entries(order_id)
+  - `idx_notifications_is_read` ON notifications(user_id, is_read) WHERE is_read = false (partial index)
+  - `idx_orders_status` ON orders(status) (for admin queries)
+  - `idx_profiles_role_status` ON profiles(role, status) (for admin queries)
+  - All created with CONCURRENTLY (no table lock, safe for production)
+- [x] Función: `get_gestor_dashboard(p_manager_id uuid)` en ambos proyectos
+  - 1 SQL request instead of 4 separate count queries
+  - SECURITY DEFINER + STABLE (runs as function creator, cached by Postgres)
+  - Returns: total_orders, pending_orders, sold_orders, balance
+- [x] Función: `get_admin_dashboard()` en ambos proyectos
+  - 1 SQL request instead of 6 separate count queries
+  - Returns: total_users, pending_users, active_users, total_orders, pending_orders, pending_payouts
+- [x] GRANT EXECUTE on both functions TO authenticated, anon
+- [x] Actualizar `GestorDashboard.tsx` → usa `supabase.rpc("get_gestor_dashboard")`
+- [x] Actualizar `admin/page.tsx` → usa `supabase.rpc("get_admin_dashboard")`
+- [x] Storage DELETE policy: "Authenticated users can delete their order images"
+  - ON storage.objects FOR DELETE USING (auth.uid()::text = (storage.foldername(name))[1])
+  - Applied to both projects
+- [x] Fix `notifications_insert_system` policy: CHECK(true) → CHECK(auth.uid() IS NOT NULL)
+  - Applied to both projects
+- [x] `npm run typecheck && npm run build && npm run test`
+
+### Resultados
+| Query | Antes | Después |
+|-------|-------|---------|
+| Gestor dashboard | 4 requests (orders×3 + wallet×1) | 1 request (RPC) |
+| Admin dashboard KPIs | 6 requests (profiles×3 + orders×2 + payouts×1) | 1 request (RPC) |
+| Notifications unread count | Full scan si no hay índice | Partial index (solo no leídas) |
+| Storage delete images | No policy (imposible borrar) | Policy con auth check |
 
 ### Verificación
 - Dashboard gestor: 1 request en lugar de 4 (función SQL)

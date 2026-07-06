@@ -87,27 +87,16 @@ function AdminContent() {
   const isAdmin = profile?.role === "admin";
   const userId = user?.id ?? "";
 
-  // ─── Query 1: KPIs (counts) ───
+  // ─── Query 1: KPIs via SQL function (1 request instead of 6) ───
   const { data: kpis, isLoading: kpisLoading, error: kpisError } = useSupabaseQuery<AdminKPIs>({
     key: ["admin-dashboard"],
     queryFn: async (supabase) => {
-      const [usersRes, pendingRes, activeRes, ordersRes, pendingOrdersRes, payoutsRes] =
-        await Promise.all([
-          supabase.from("profiles").select("*", { count: "exact", head: true }),
-          supabase.from("profiles").select("*", { count: "exact", head: true }).eq("status", "pending"),
-          supabase.from("profiles").select("*", { count: "exact", head: true }).eq("status", "active"),
-          supabase.from("orders").select("*", { count: "exact", head: true }),
-          supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending"),
-          supabase.from("payout_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
-        ]);
+      const { data, error } = await supabase.rpc("get_admin_dashboard");
 
-      return {
-        totalUsers: usersRes.count || 0,
-        pendingUsers: pendingRes.count || 0,
-        activeUsers: activeRes.count || 0,
-        totalOrders: ordersRes.count || 0,
-        pendingOrders: pendingOrdersRes.count || 0,
-        pendingPayouts: payoutsRes.count || 0,
+      if (error) throw new Error(error.message);
+      return (data as AdminKPIs) || {
+        totalUsers: 0, pendingUsers: 0, activeUsers: 0,
+        totalOrders: 0, pendingOrders: 0, pendingPayouts: 0,
       };
     },
     staleTime: 60_000, // 60s

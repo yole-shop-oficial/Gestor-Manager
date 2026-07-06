@@ -38,31 +38,22 @@ export function GestorDashboard() {
   const { user, profile, isActive, isPending } = useSession();
   const userId = user?.id ?? "";
 
+  // Uses SQL function get_gestor_dashboard() — 1 request instead of 4
   const { data: stats, isLoading: statsLoading, error: statsError } = useSupabaseQuery<DashboardStats>({
     key: ["gestor-dashboard", userId],
     queryFn: async (client, uid) => {
-      const [totalRes, pendingRes, soldRes, walletRes] = await Promise.all([
-        client.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", uid),
-        client.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", uid).eq("status", "pending"),
-        client.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", uid).eq("status", "sold"),
-        client.from("wallet_entries").select("amount").eq("manager_id", uid),
-      ]);
+      const { data, error } = await client.rpc("get_gestor_dashboard", {
+        p_manager_id: uid,
+      });
 
-      const balance = walletRes.data?.reduce((sum: number, entry: any) => sum + Number(entry.amount), 0) || 0;
-
-      return {
-        totalOrders: totalRes.count || 0,
-        pendingOrders: pendingRes.count || 0,
-        soldOrders: soldRes.count || 0,
-        balance,
-      };
+      if (error) throw new Error(error.message);
+      return (data as DashboardStats) || { totalOrders: 0, pendingOrders: 0, soldOrders: 0, balance: 0 };
     },
-    staleTime: 30_000, // 30s
+    staleTime: 30_000,
   });
 
   const displayName = profile?.full_name || profile?.username || user?.email?.split("@")[0] || "Gestor";
 
-  // Error visible en UI (usuario sin DevTools)
   if (statsError) {
     return (
       <div className="p-6 pb-24">
