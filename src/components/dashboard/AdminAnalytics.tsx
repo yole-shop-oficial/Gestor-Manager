@@ -1,8 +1,6 @@
 "use client";
 
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
+import { useSession, useSupabaseQuery } from "@/hooks";
 import {
   TrendingUp, Users, ShoppingCart, DollarSign, Loader2,
 } from "lucide-react";
@@ -20,16 +18,13 @@ interface AnalyticsData {
 }
 
 export function AdminAnalytics() {
-  const { user, client, project, profile } = useSession();
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, profile } = useSession();
+  const userId = user?.id ?? "";
+  const isAdmin = profile?.role === "admin";
 
-  const loadAnalytics = useCallback(async () => {
-    if (!user || !project || profile?.role !== "admin") return;
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data, isLoading, error } = useSupabaseQuery<AnalyticsData>({
+    key: ["admin-analytics"],
+    queryFn: async (supabase) => {
       const [ordersRes, gestoresRes, walletRes, payoutsRes] = await Promise.all([
         supabase.from("orders").select("status, sale_price, base_price, delivery_price, manager_id, created_at").order("created_at", { ascending: false }).limit(500),
         supabase.from("profiles").select("id, full_name, status, role").neq("role", "admin"),
@@ -70,17 +65,18 @@ export function AdminAnalytics() {
       });
       const topGestores = Object.entries(gestorData).sort(([, a], [, b]) => b.comision - a.comision).slice(0, 5).map(([name, d]) => ({ name, ...d }));
 
-      setData({ totals, ordersByStatus, topGestores });
-    } catch (err) {
-      console.error("[ANALYTICS] Error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project, profile]);
+      return { totals, ordersByStatus, topGestores };
+    },
+    staleTime: 120_000, // 120s
+    enabled: isAdmin,
+  });
 
-  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
-
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (error) return (
+    <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-4 text-center">
+      <p className="text-xs text-red-700 dark:text-red-400">Error cargando analytics: {error.message}</p>
+    </div>
+  );
   if (!data) return null;
 
   return (

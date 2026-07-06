@@ -110,53 +110,37 @@ src/app/profile/page.tsx
 Toda consulta Supabase pasa por React Query. Cache automático, deduplicación, stale-while-revalidate, retry.
 
 ### Tareas
-- [ ] Crear `src/hooks/useSupabaseQuery.ts` — wrapper tipado:
-  ```typescript
-  function useSupabaseQuery<T>(
-    key: string[],
-    queryFn: (client: SupabaseClient, userId: string) => Promise<T>,
-    options?: { staleTime?: number; enabled?: boolean }
-  ): UseQueryResult<T>
-  ```
-- [ ] Configurar QueryClient global:
-  ```typescript
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      gcTime: 10 * 60 * 1000,   // 10 min
-      staleTime: 30 * 1000,      // 30s default
-      refetchOnWindowFocus: false,
-    }
-  }
-  ```
-- [ ] Migrar Dashboard Gestor (`GestorDashboard.tsx`):
-  - Query key: `["gestor-dashboard", userId]`
-  - staleTime: 30s
-  - Combinar 4 count queries → 1 query con función SQL o multi-select
-- [ ] Migrar Dashboard Admin (`admin/page.tsx`):
-  - Query key: `["admin-dashboard"]`
-  - staleTime: 60s
-  - Combinar counts en 1 query
-  - Gestores list: query separada con staleTime 60s
-  - Payouts: query separada con staleTime 30s
-- [ ] Migrar AdminAnalytics:
-  - Query key: `["admin-analytics"]`
-  - staleTime: 120s
-  - Lazy load (ya está con dynamic())
-- [ ] Migrar GestorAnalytics:
-  - Query key: `["gestor-analytics", userId]`
-  - staleTime: 60s
-  - Lazy load (ya está con dynamic())
-- [ ] Migrar Wallet (`wallet/page.tsx`):
-  - Query key: `["wallet", userId]`
-  - staleTime: 30s
-- [ ] Migrar Orders (`orders/page.tsx`):
-  - Query key: `["orders", userId]`
-  - staleTime: 2min
-- [ ] Migrar Notifications (`notifications/page.tsx`):
-  - Query key: `["notifications", userId]`
-  - staleTime: 30s
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Crear `src/hooks/useSupabaseQuery.ts` — wrapper tipado con `invalidate` helpers
+- [x] Configurar QueryClient global (retry: 2, gcTime: 10min, staleTime: 30s, refetchOnWindowFocus: false)
+- [x] Migrar Dashboard Gestor (`GestorDashboard.tsx`):
+  - Query key: `["gestor-dashboard", userId]`, staleTime: 30s
+  - 4 count queries combinadas en 1 Promise.all
+- [x] Migrar Dashboard Admin (`admin/page.tsx`):
+  - Query key: `["admin-dashboard"]`, staleTime: 60s (KPIs)
+  - Gestores list: `["admin-gestores"]`, staleTime: 60s
+  - Payouts: `["admin-payouts"]`, staleTime: 30s
+- [x] Migrar AdminAnalytics:
+  - Query key: `["admin-analytics"]`, staleTime: 120s
+- [x] Migrar GestorAnalytics:
+  - Query key: `["gestor-analytics", userId]`, staleTime: 60s
+- [x] Migrar Wallet (`wallet/page.tsx`):
+  - Query key: `["wallet", userId]`, staleTime: 30s
+- [x] Migrar Orders (`orders/page.tsx`):
+  - Query key: `["orders", userId]`, staleTime: 2min
+- [x] Migrar Notifications (`notifications/page.tsx`):
+  - Query key: `["notifications", userId]`, staleTime: 30s
+  - Realtime invalida cache en lugar de setState manual
+- [x] Migrar Chat (`chat/page.tsx`):
+  - Query key: `["chat", userId]`, staleTime: 0 (siempre fresh)
+  - Mensajes optimistas + invalidación por realtime
+- [x] Migrar Order Detail (`orders/[id]/page.tsx`):
+  - Query key: `["order-detail", orderId]`, staleTime: 30s
+  - Invalidación de queries relacionadas al cambiar status
+- [x] Migrar New Order (`orders/new/page.tsx`):
+  - Invalidación de orders, gestor-dashboard, gestor-analytics al crear pedido
+- [x] Profile usa useSession (sin query adicional, cache de 5min)
+- [x] Errores visibles en UI (no solo console) en todas las páginas
+- [x] `npm run typecheck && npm run build && npm run test`
 
 ### Stale times por query
 ```

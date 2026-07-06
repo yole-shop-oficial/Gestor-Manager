@@ -3,9 +3,10 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
 import {
   Users,
   ShoppingCart,
@@ -59,16 +60,13 @@ interface PayoutRow {
   manager_name?: string;
 }
 
-interface AdminStats {
+interface AdminKPIs {
   totalUsers: number;
   pendingUsers: number;
   activeUsers: number;
   totalOrders: number;
   pendingOrders: number;
   pendingPayouts: number;
-  gestores: GestorRow[];
-  payouts: PayoutRow[];
-  loading: boolean;
 }
 
 export default function AdminPage() {
@@ -83,58 +81,67 @@ export default function AdminPage() {
 
 function AdminContent() {
   const { user, client, project, profile, profileLoading } = useSession();
-  const [stats, setStats] = useState<AdminStats>({
-    totalUsers: 0,
-    pendingUsers: 0,
-    activeUsers: 0,
-    totalOrders: 0,
-    pendingOrders: 0,
-    pendingPayouts: 0,
-    gestores: [],
-    payouts: [],
-    loading: true,
-  });
+  const queryClient = useQueryClient();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const loadAdminData = useCallback(async () => {
-    if (!user || !project || !profile) return;
-    // Solo admins pueden ver esto
-    if (profile.role !== "admin") return;
+  const isAdmin = profile?.role === "admin";
+  const userId = user?.id ?? "";
 
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
-      const [usersRes, pendingRes, activeRes, ordersRes, pendingOrdersRes] =
+  // ─── Query 1: KPIs (counts) ───
+  const { data: kpis, isLoading: kpisLoading, error: kpisError } = useSupabaseQuery<AdminKPIs>({
+    key: ["admin-dashboard"],
+    queryFn: async (supabase) => {
+      const [usersRes, pendingRes, activeRes, ordersRes, pendingOrdersRes, payoutsRes] =
         await Promise.all([
           supabase.from("profiles").select("*", { count: "exact", head: true }),
           supabase.from("profiles").select("*", { count: "exact", head: true }).eq("status", "pending"),
           supabase.from("profiles").select("*", { count: "exact", head: true }).eq("status", "active"),
           supabase.from("orders").select("*", { count: "exact", head: true }),
           supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending"),
+          supabase.from("payout_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
         ]);
 
-      // Cargar gestores pendientes y recientes
-      const { data: gestores } = await supabase
+      return {
+        totalUsers: usersRes.count || 0,
+        pendingUsers: pendingRes.count || 0,
+        activeUsers: activeRes.count || 0,
+        totalOrders: ordersRes.count || 0,
+        pendingOrders: pendingOrdersRes.count || 0,
+        pendingPayouts: payoutsRes.count || 0,
+      };
+    },
+    staleTime: 60_000, // 60s
+    enabled: isAdmin,
+  });
+
+  // ─── Query 2: Gestores list ───
+  const { data: gestores = [], isLoading: gestoresLoading } = useSupabaseQuery<GestorRow[]>({
+    key: ["admin-gestores"],
+    queryFn: async (supabase) => {
+      const { data } = await supabase
         .from("profiles")
         .select("id, full_name, username, email, phone, role, status, join_date, has_sales_experience, assigned_project")
         .neq("role", "admin")
         .order("created_at", { ascending: false })
         .limit(20);
+      return (data as GestorRow[]) || [];
+    },
+    staleTime: 60_000, // 60s
+    enabled: isAdmin,
+  });
 
-      // Cargar solicitudes de retiro pendientes
-      const [payoutsRes, payoutsData] = await Promise.all([
-        supabase.from("payout_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
-        supabase
-          .from("payout_requests")
-          .select("id, manager_id, amount, status, notes, created_at")
-          .in("status", ["pending", "approved"])
-          .order("created_at", { ascending: false })
-          .limit(20),
-      ]);
+  // ─── Query 3: Payouts ───
+  const { data: payouts = [], isLoading: payoutsLoading } = useSupabaseQuery<PayoutRow[]>({
+    key: ["admin-payouts"],
+    queryFn: async (supabase) => {
+      const { data } = await supabase
+        .from("payout_requests")
+        .select("id, manager_id, amount, status, notes, created_at")
+        .in("status", ["pending", "approved"])
+        .order("created_at", { ascending: false })
+        .limit(20);
 
-      // Obtener nombres de los gestores que solicitaron retiro
-      let payoutsWithNames: PayoutRow[] = (payoutsData.data as PayoutRow[]) || [];
+      let payoutsWithNames: PayoutRow[] = (data as PayoutRow[]) || [];
       if (payoutsWithNames.length > 0) {
         const managerIds = [...new Set(payoutsWithNames.map((p) => p.manager_id))];
         const { data: managers } = await supabase
@@ -148,33 +155,16 @@ function AdminContent() {
           manager_name: nameMap.get(p.manager_id) || "Desconocido",
         }));
       }
+      return payoutsWithNames;
+    },
+    staleTime: 30_000, // 30s
+    enabled: isAdmin,
+  });
 
-      setStats({
-        totalUsers: usersRes.count || 0,
-        pendingUsers: pendingRes.count || 0,
-        activeUsers: activeRes.count || 0,
-        totalOrders: ordersRes.count || 0,
-        pendingOrders: pendingOrdersRes.count || 0,
-        pendingPayouts: payoutsRes.count || 0,
-        gestores: (gestores as GestorRow[]) || [],
-        payouts: payoutsWithNames,
-        loading: false,
-      });
-    } catch (err) {
-      console.error("[ADMIN] Error:", err);
-      setStats((s) => ({ ...s, loading: false }));
-    }
-  }, [user, client, project, profile]);
-
-  useEffect(() => {
-    if (profile && profile.role === "admin") {
-      loadAdminData();
-    }
-  }, [profile, loadAdminData]);
-
-  const changeUserStatus = async (userId: string, newStatus: string) => {
+  // ─── Mutations (manual, invalidates cache) ───
+  const changeUserStatus = async (targetUserId: string, newStatus: string) => {
     if (!client || !project) return;
-    setActionLoading(userId + newStatus);
+    setActionLoading(targetUserId + newStatus);
 
     try {
       const config = getProjectConfig(project);
@@ -183,7 +173,7 @@ function AdminContent() {
       const { error } = await supabase
         .from("profiles")
         .update({ status: newStatus })
-        .eq("id", userId);
+        .eq("id", targetUserId);
 
       if (error) {
         alert("Error: " + error.message);
@@ -191,25 +181,26 @@ function AdminContent() {
         // Crear notificación para el usuario
         if (newStatus === "active") {
           await supabase.from("notifications").insert([{
-            user_id: userId,
+            user_id: targetUserId,
             title: "¡Cuenta activada!",
             body: "Tu cuenta ha sido aprobada por el administrador. Ya puedes crear pedidos y ver tu billetera.",
           }]);
         } else if (newStatus === "denied") {
           await supabase.from("notifications").insert([{
-            user_id: userId,
+            user_id: targetUserId,
             title: "Cuenta denegada",
             body: "Tu solicitud de registro fue denegada. Contacta al soporte si crees que es un error.",
           }]);
         } else if (newStatus === "blocked") {
           await supabase.from("notifications").insert([{
-            user_id: userId,
+            user_id: targetUserId,
             title: "Cuenta bloqueada",
             body: "Tu cuenta ha sido bloqueada por un administrador.",
           }]);
         }
-        // Refrescar datos
-        await loadAdminData();
+        // Invalidar queries afectadas
+        invalidate.adminDashboard(queryClient);
+        invalidate.adminGestores(queryClient);
       }
     } catch (err) {
       console.error("[ADMIN] Error cambiando status:", err);
@@ -242,8 +233,6 @@ function AdminContent() {
       if (error) {
         alert("Error: " + error.message);
       } else {
-        // Las notificaciones las maneja el trigger SQL automáticamente
-        // Solo registrar movimiento en wallet si se aprueba
         if (newStatus === "approved") {
           await supabase.from("wallet_entries").insert([{
             manager_id: managerId,
@@ -252,7 +241,10 @@ function AdminContent() {
             description: `Retiro aprobado #${payoutId.slice(0, 8)}`,
           }]);
         }
-        await loadAdminData();
+        // Invalidar queries afectadas
+        invalidate.adminDashboard(queryClient);
+        invalidate.adminPayouts(queryClient);
+        invalidate.wallet(queryClient, managerId);
       }
     } catch (err) {
       console.error("[ADMIN] Error cambiando payout status:", err);
@@ -270,7 +262,7 @@ function AdminContent() {
     );
   }
 
-  if (profile?.role !== "admin") {
+  if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center">
         <AlertTriangle className="w-16 h-16 text-yellow-500 mb-4" />
@@ -281,6 +273,18 @@ function AdminContent() {
         <Link href="/" className="mt-4 text-primary font-bold text-sm">
           Volver al inicio
         </Link>
+      </div>
+    );
+  }
+
+  // Error visible en UI
+  if (kpisError) {
+    return (
+      <div className="p-6 pb-24">
+        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando panel admin</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{kpisError.message}</p>
+        </div>
       </div>
     );
   }
@@ -311,19 +315,19 @@ function AdminContent() {
 
       {/* Stats Grid */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-2 gap-3">
-        <AdminStat icon={Users} label="Usuarios" value={stats.totalUsers} gradient="from-indigo-500 to-purple-600" />
-        <AdminStat icon={UserCheck} label="Pendientes" value={stats.pendingUsers} gradient="from-yellow-500 to-orange-500" urgent={stats.pendingUsers > 0} />
-        <AdminStat icon={ShoppingCart} label="Pedidos" value={stats.totalOrders} gradient="from-blue-500 to-cyan-500" />
-        <AdminStat icon={Wallet} label="Retiros pend." value={stats.pendingPayouts} gradient="from-emerald-500 to-teal-500" urgent={stats.pendingPayouts > 0} />
+        <AdminStat icon={Users} label="Usuarios" value={kpis?.totalUsers ?? 0} gradient="from-indigo-500 to-purple-600" loading={kpisLoading} />
+        <AdminStat icon={UserCheck} label="Pendientes" value={kpis?.pendingUsers ?? 0} gradient="from-yellow-500 to-orange-500" urgent={kpis?.pendingUsers ? kpis.pendingUsers > 0 : false} loading={kpisLoading} />
+        <AdminStat icon={ShoppingCart} label="Pedidos" value={kpis?.totalOrders ?? 0} gradient="from-blue-500 to-cyan-500" loading={kpisLoading} />
+        <AdminStat icon={Wallet} label="Retiros pend." value={kpis?.pendingPayouts ?? 0} gradient="from-emerald-500 to-teal-500" urgent={kpis?.pendingPayouts ? kpis.pendingPayouts > 0 : false} loading={kpisLoading} />
       </motion.div>
 
       {/* Alerta de pendientes */}
-      {stats.pendingUsers > 0 && (
+      {kpis && kpis.pendingUsers > 0 && (
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-[20px] bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/20 p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-yellow-800 dark:text-yellow-300">
-              {stats.pendingUsers} usuario(s) esperando aprobación
+              {kpis.pendingUsers} usuario(s) esperando aprobación
             </p>
             <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
               Revisa sus datos y aprueba o deniega sus cuentas abajo.
@@ -333,14 +337,14 @@ function AdminContent() {
       )}
 
       {/* Solicitudes de retiro */}
-      {stats.payouts.length > 0 && (
+      {payouts.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Solicitudes de retiro</h2>
-            <span className="text-xs text-muted-foreground">{stats.pendingPayouts} pendiente(s)</span>
+            <span className="text-xs text-muted-foreground">{kpis?.pendingPayouts ?? 0} pendiente(s)</span>
           </div>
 
-          {stats.payouts.map((p) => (
+          {payouts.map((p) => (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, x: -12 }}
@@ -407,21 +411,21 @@ function AdminContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Gestores registrados</h2>
-          <span className="text-xs text-muted-foreground">{stats.gestores.length} total</span>
+          <span className="text-xs text-muted-foreground">{gestores.length} total</span>
         </div>
 
-        {stats.loading ? (
+        {gestoresLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
-        ) : stats.gestores.length === 0 ? (
+        ) : gestores.length === 0 ? (
           <div className="card-filled rounded-[20px] p-8 text-center">
             <Users className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">No hay gestores registrados aún</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {stats.gestores.map((g) => (
+            {gestores.map((g) => (
               <motion.div
                 key={g.id}
                 initial={{ opacity: 0, x: -12 }}
@@ -510,19 +514,24 @@ function AdminContent() {
   );
 }
 
-function AdminStat({ icon: Icon, label, value, gradient, urgent }: {
+function AdminStat({ icon: Icon, label, value, gradient, urgent, loading }: {
   icon: React.ElementType;
   label: string;
   value: number;
   gradient: string;
   urgent?: boolean;
+  loading?: boolean;
 }) {
   return (
     <div className={`rounded-[20px] card-filled p-4 space-y-2 ${urgent ? "ring-2 ring-yellow-500/30" : ""}`}>
       <div className={`w-8 h-8 rounded-[12px] bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg`}>
         <Icon className="w-4 h-4 text-white" />
       </div>
-      <p className="text-xl font-bold leading-none">{value}</p>
+      {loading ? (
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      ) : (
+        <p className="text-xl font-bold leading-none">{value}</p>
+      )}
       <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
     </div>
   );

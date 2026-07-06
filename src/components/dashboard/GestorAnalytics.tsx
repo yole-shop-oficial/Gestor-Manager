@@ -1,9 +1,7 @@
 "use client";
 
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
-import { ShoppingCart, DollarSign, TrendingUp, Loader2, BarChart3 } from "lucide-react";
+import { useSession, useSupabaseQuery } from "@/hooks";
+import { ShoppingCart, DollarSign, TrendingUp, Loader2, BarChart3, AlertTriangle } from "lucide-react";
 
 interface GestorAnalyticsData {
   totalOrders: number;
@@ -15,19 +13,15 @@ interface GestorAnalyticsData {
 }
 
 export function GestorAnalytics() {
-  const { user, client, project } = useSession();
-  const [data, setData] = useState<GestorAnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user } = useSession();
+  const userId = user?.id ?? "";
 
-  const loadAnalytics = useCallback(async () => {
-    if (!user || !project) return;
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data, isLoading, error } = useSupabaseQuery<GestorAnalyticsData>({
+    key: ["gestor-analytics", userId],
+    queryFn: async (client, uid) => {
       const [ordersRes, walletRes] = await Promise.all([
-        supabase.from("orders").select("status, created_at").eq("manager_id", user.id).order("created_at", { ascending: false }).limit(200),
-        supabase.from("wallet_entries").select("amount, entry_type, created_at").eq("manager_id", user.id).order("created_at", { ascending: false }).limit(200),
+        client.from("orders").select("status, created_at").eq("manager_id", uid).order("created_at", { ascending: false }).limit(200),
+        client.from("wallet_entries").select("amount, entry_type, created_at").eq("manager_id", uid).order("created_at", { ascending: false }).limit(200),
       ]);
 
       const orders = ordersRes.data || [];
@@ -51,17 +45,17 @@ export function GestorAnalytics() {
         recentOrders.push({ month: key, count });
       }
 
-      setData({ totalOrders, soldOrders, cancelledOrders, totalCommission, conversionRate, recentOrders });
-    } catch (err) {
-      console.error("[GESTOR-ANALYTICS] Error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project]);
+      return { totalOrders, soldOrders, cancelledOrders, totalCommission, conversionRate, recentOrders };
+    },
+    staleTime: 60_000, // 60s
+  });
 
-  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
-
-  if (loading) return <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  if (error) return (
+    <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-4 text-center">
+      <p className="text-xs text-red-700 dark:text-red-400">Error cargando estadísticas: {error.message}</p>
+    </div>
+  );
   if (!data) return null;
 
   const maxCount = Math.max(...data.recentOrders.map(m => m.count), 1);

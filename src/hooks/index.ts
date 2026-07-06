@@ -5,3 +5,6 @@ export type {
   UserRole,
   UserStatus,
 } from "./useSession";
+
+export { useSupabaseQuery, invalidate } from "./useSupabaseQuery";
+export type { UseSupabaseQueryOptions } from "./useSupabaseQuery";

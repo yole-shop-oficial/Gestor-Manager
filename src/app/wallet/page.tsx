@@ -3,9 +3,10 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
 import {
   Wallet,
   TrendingUp,
@@ -34,13 +35,18 @@ interface PayoutRequest {
   status: "pending" | "approved" | "paid" | "rejected";
   notes: string | null;
   created_at: string;
-  processed_at: string | null;
 }
 
 interface WalletSummary {
   balance: number;
   total_commissions: number;
   total_payouts: number;
+}
+
+interface WalletData {
+  summary: WalletSummary;
+  entries: WalletEntry[];
+  payouts: PayoutRequest[];
 }
 
 export default function WalletPage() {
@@ -55,65 +61,49 @@ export default function WalletPage() {
 
 function WalletContent() {
   const { user, client, project } = useSession();
-  const [summary, setSummary] = useState<WalletSummary | null>(null);
-  const [entries, setEntries] = useState<WalletEntry[]>([]);
-  const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showPayoutForm, setShowPayoutForm] = useState(false);
-  const [payoutAmount, setPayoutAmount] = useState("");
-  const [payoutNotes, setPayoutNotes] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const queryClient = useQueryClient();
+  const userId = user?.id ?? "";
 
-  const loadData = useCallback(async () => {
-    if (!user || !project) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data: walletData, isLoading, error: walletError } = useSupabaseQuery<WalletData>({
+    key: ["wallet", userId],
+    queryFn: async (supabase, uid) => {
       const [summaryRes, entriesRes, payoutsRes] = await Promise.all([
         supabase
           .from("manager_wallet_summary")
           .select("*")
-          .eq("manager_id", user.id)
+          .eq("manager_id", uid)
           .single(),
         supabase
           .from("wallet_entries")
           .select("*")
-          .eq("manager_id", user.id)
+          .eq("manager_id", uid)
           .order("created_at", { ascending: false })
           .limit(30),
         supabase
           .from("payout_requests")
           .select("*")
-          .eq("manager_id", user.id)
+          .eq("manager_id", uid)
           .order("created_at", { ascending: false })
           .limit(10),
       ]);
 
-      if (summaryRes.data) {
-        setSummary(summaryRes.data as WalletSummary);
-      } else {
-        // Si no hay vista, calcular manualmente
-        setSummary({ balance: 0, total_commissions: 0, total_payouts: 0 });
-      }
+      const summary: WalletSummary = summaryRes.data
+        ? (summaryRes.data as WalletSummary)
+        : { balance: 0, total_commissions: 0, total_payouts: 0 };
 
-      if (entriesRes.data) setEntries(entriesRes.data as WalletEntry[]);
-      if (payoutsRes.data) setPayouts(payoutsRes.data as PayoutRequest[]);
-    } catch (err) {
-      console.error("[WALLET] Error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project]);
+      const entries = (entriesRes.data as WalletEntry[]) || [];
+      const payouts = (payoutsRes.data as PayoutRequest[]) || [];
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+      return { summary, entries, payouts };
+    },
+    staleTime: 30_000, // 30s
+  });
+
+  const [showPayoutForm, setShowPayoutForm] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutNotes, setPayoutNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const submitPayout = async () => {
     if (!user || !client || !project) return;
@@ -124,7 +114,7 @@ function WalletContent() {
       return;
     }
 
-    const available = summary?.balance || 0;
+    const available = walletData?.summary.balance || 0;
     if (amount > available) {
       setMessage({ type: "error", text: `No puedes solicitar más de tu saldo disponible ($${available.toFixed(2)}).` });
       return;
@@ -153,7 +143,8 @@ function WalletContent() {
         setPayoutAmount("");
         setPayoutNotes("");
         setShowPayoutForm(false);
-        await loadData();
+        // Invalidar wallet para refrescar
+        invalidate.wallet(queryClient, userId);
       }
     } catch (err: any) {
       console.error("[WALLET] Error solicitando retiro:", err?.message || err);
@@ -163,11 +154,25 @@ function WalletContent() {
     }
   };
 
-  const balance = summary?.balance || 0;
-  const totalCommissions = summary?.total_commissions || 0;
-  const totalPayouts = summary?.total_payouts || 0;
+  const balance = walletData?.summary.balance || 0;
+  const totalCommissions = walletData?.summary.total_commissions || 0;
+  const totalPayouts = walletData?.summary.total_payouts || 0;
+  const entries = walletData?.entries || [];
+  const payouts = walletData?.payouts || [];
 
-  if (loading) {
+  // Error visible en UI
+  if (walletError) {
+    return (
+      <div className="p-6 pb-24">
+        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando billetera</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{walletError.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />

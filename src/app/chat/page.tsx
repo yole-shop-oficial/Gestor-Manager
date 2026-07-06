@@ -3,16 +3,18 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
   MessageCircle,
   Send,
   Loader2,
   User,
   Headphones,
+  AlertTriangle,
 } from "lucide-react";
 
 interface Message {
@@ -22,6 +24,11 @@ interface Message {
   body: string;
   read_at: string | null;
   created_at: string;
+}
+
+interface ChatData {
+  messages: Message[];
+  adminId: string | null;
 }
 
 export default function ChatPage() {
@@ -36,24 +43,13 @@ export default function ChatPage() {
 
 function ChatContent() {
   const { user, client, project } = useSession();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [newMessage, setNewMessage] = useState("");
-  const [adminId, setAdminId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const queryClient = useQueryClient();
+  const userId = user?.id ?? "";
 
-  const loadChat = useCallback(async () => {
-    if (!user || !project) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data: chatData, isLoading, error: chatError } = useSupabaseQuery<ChatData>({
+    key: ["chat", userId],
+    queryFn: async (supabase, uid) => {
+      // Obtener admin ID
       const { data: adminProfile } = await supabase
         .from("profiles")
         .select("id")
@@ -61,32 +57,39 @@ function ChatContent() {
         .limit(1)
         .single();
 
-      if (adminProfile) {
-        setAdminId(adminProfile.id);
+      const adminId = adminProfile?.id ?? null;
+      let messages: Message[] = [];
 
+      if (adminId) {
         const { data, error } = await supabase
           .from("messages")
           .select("id, sender_id, recipient_id, body, read_at, created_at")
-          .or(`and(sender_id.eq.${user.id},recipient_id.eq.${adminProfile.id}),and(sender_id.eq.${adminProfile.id},recipient_id.eq.${user.id})`)
+          .or(`and(sender_id.eq.${uid},recipient_id.eq.${adminId}),and(sender_id.eq.${adminId},recipient_id.eq.${uid})`)
           .order("created_at", { ascending: true })
           .limit(100);
 
-        if (error) {
-          console.error("[CHAT] Error cargando mensajes:", error.message);
-        } else if (data) {
-          setMessages(data as Message[]);
+        if (!error && data) {
+          messages = data as Message[];
         }
       }
-    } catch (err) {
-      console.error("[CHAT] Excepción:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project]);
 
-  useEffect(() => {
-    loadChat();
-  }, [loadChat]);
+      return { messages, adminId };
+    },
+    staleTime: 0, // siempre fresh — chat necesita datos en vivo
+  });
+
+  const [sending, setSending] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  // Combinar datos del servidor con mensajes optimistas
+  const serverMessages = chatData?.messages || [];
+  const adminId = chatData?.adminId ?? null;
+  const allMessages = [...serverMessages, ...optimisticMessages.filter(
+    (om) => !serverMessages.some((sm) => sm.id === om.id)
+  )];
 
   // ─── Real-time subscription para mensajes nuevos ───
   useEffect(() => {
@@ -95,7 +98,6 @@ function ChatContent() {
     const config = getProjectConfig(project);
     const supabase = client || createLoginClient(config);
 
-    // Suscribirse a INSERT en messages donde el usuario es remitente o destinatario
     const channel = supabase
       .channel("chat-messages")
       .on(
@@ -106,13 +108,8 @@ function ChatContent() {
           table: "messages",
           filter: `recipient_id=eq.${user.id}`,
         },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          // Evitar duplicados si el mensaje ya fue añadido por handleSend
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+        () => {
+          invalidate.chat(queryClient, userId);
         }
       )
       .on(
@@ -123,12 +120,10 @@ function ChatContent() {
           table: "messages",
           filter: `sender_id=eq.${user.id}`,
         },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+        () => {
+          invalidate.chat(queryClient, userId);
+          // Limpiar mensajes optimistas ya que el servidor los tiene
+          setOptimisticMessages([]);
         }
       )
       .subscribe((status) => {
@@ -143,41 +138,68 @@ function ChatContent() {
         channelRef.current = null;
       }
     };
-  }, [user, client, project]);
+  }, [user, client, project, queryClient, userId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [allMessages]);
 
   const handleSend = async () => {
     if (!newMessage.trim() || !user || !adminId || !project) return;
 
+    const body = newMessage.trim();
+    setNewMessage("");
     setSending(true);
+
+    // Mensaje optimista
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      sender_id: user.id,
+      recipient_id: adminId,
+      body,
+      read_at: null,
+      created_at: new Date().toISOString(),
+    };
+    setOptimisticMessages((prev) => [...prev, optimisticMsg]);
+
     try {
       const config = getProjectConfig(project);
       const supabase = client || createLoginClient(config);
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("messages")
-        .insert([{ sender_id: user.id, recipient_id: adminId, body: newMessage.trim() }])
+        .insert([{ sender_id: user.id, recipient_id: adminId, body }])
         .select("id, sender_id, recipient_id, body, read_at, created_at")
         .single();
 
       if (error) {
         console.error("[CHAT] Error enviando mensaje:", error.message);
-      } else if (data) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === data.id)) return prev;
-          return [...prev, data as Message];
-        });
-        setNewMessage("");
+        // Quitar mensaje optimista en caso de error
+        setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+        setNewMessage(body); // Restaurar texto
+      } else {
+        // El realtime invalidará la query y limpiará los optimistas
       }
     } catch (err) {
       console.error("[CHAT] Excepción enviando:", err);
+      setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      setNewMessage(body);
     } finally {
       setSending(false);
     }
   };
+
+  // Error visible en UI
+  if (chatError) {
+    return (
+      <div className="p-6 pb-24">
+        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando chat</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{chatError.message}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -194,16 +216,16 @@ function ChatContent() {
       </motion.div>
 
       <div className="flex-1 overflow-y-auto px-6 space-y-3">
-        {loading ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
-        ) : messages.length === 0 ? (
+        ) : allMessages.length === 0 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16 text-center">
             <MessageCircle className="w-12 h-12 text-muted-foreground/30 mb-3" />
             <h3 className="text-base font-semibold mb-1">Sin mensajes</h3>
             <p className="text-sm text-muted-foreground">Escribe un mensaje para iniciar la conversación con administración.</p>
           </motion.div>
         ) : (
-          messages.map((msg, i) => {
+          allMessages.map((msg, i) => {
             const isMine = msg.sender_id === user?.id;
             return (
               <motion.div key={msg.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.02, 0.5) }} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>

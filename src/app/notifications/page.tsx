@@ -3,10 +3,11 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
   Bell,
   CheckCircle2,
@@ -39,39 +40,25 @@ export default function NotificationsPage() {
 
 function NotificationsContent() {
   const { user, client, project } = useSession();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const userId = user?.id ?? "";
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  const loadNotifications = useCallback(async () => {
-    if (!user || !project) { setLoading(false); return; }
-
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data: notifications = [], isLoading, error: notifError } = useSupabaseQuery<Notification[]>({
+    key: ["notifications", userId],
+    queryFn: async (supabase, uid) => {
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .order("created_at", { ascending: false })
         .limit(50);
 
-      if (error) {
-        console.error("[NOTIFICATIONS] Error:", error.message);
-      } else if (data) {
-        setNotifications(data as Notification[]);
-      }
-    } catch (err) {
-      console.error("[NOTIFICATIONS] Excepción:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project]);
-
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+      if (error) throw new Error(error.message);
+      return (data as Notification[]) || [];
+    },
+    staleTime: 30_000, // 30s
+  });
 
   // ─── Real-time subscription para notificaciones nuevas ───
   useEffect(() => {
@@ -85,33 +72,14 @@ function NotificationsContent() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "notifications",
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
-          const newNotif = payload.new as Notification;
-          setNotifications((prev) => {
-            // Evitar duplicados
-            if (prev.some((n) => n.id === newNotif.id)) return prev;
-            return [newNotif, ...prev];
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const updated = payload.new as Notification;
-          setNotifications((prev) =>
-            prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n))
-          );
+        () => {
+          // Invalidar cache de React Query → se refresca automáticamente
+          invalidate.notifications(queryClient, userId);
         }
       )
       .subscribe((status) => {
@@ -126,7 +94,7 @@ function NotificationsContent() {
         channelRef.current = null;
       }
     };
-  }, [user, client, project]);
+  }, [user, client, project, queryClient, userId]);
 
   const markAllRead = async () => {
     if (!user || !client || !project) return;
@@ -139,7 +107,8 @@ function NotificationsContent() {
       .eq("user_id", user.id)
       .eq("is_read", false);
 
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    // Invalidar para refrescar
+    invalidate.notifications(queryClient, userId);
   };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
@@ -180,6 +149,18 @@ function NotificationsContent() {
     return `${days}d`;
   }, [now]);
 
+  // Error visible en UI
+  if (notifError) {
+    return (
+      <div className="p-6 pb-24">
+        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando notificaciones</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{notifError.message}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 pb-24 space-y-4">
       {/* Header */}
@@ -204,7 +185,7 @@ function NotificationsContent() {
       </div>
 
       {/* Lista */}
-      {loading ? (
+      {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>

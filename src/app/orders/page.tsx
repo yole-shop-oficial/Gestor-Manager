@@ -3,9 +3,8 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
+import { useSession, useSupabaseQuery } from "@/hooks";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
@@ -15,6 +14,7 @@ import {
   Package,
   Loader2,
   Filter,
+  AlertTriangle,
 } from "lucide-react";
 
 interface Order {
@@ -51,43 +51,25 @@ export default function OrdersPage() {
 }
 
 function OrdersContent() {
-  const { user, client, project } = useSession();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useSession();
+  const userId = user?.id ?? "";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  const loadOrders = useCallback(async () => {
-    if (!user || !project) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
-      const { data, error } = await supabase
+  const { data: orders = [], isLoading, error: ordersError } = useSupabaseQuery<Order[]>({
+    key: ["orders", userId],
+    queryFn: async (client, uid) => {
+      const { data, error } = await client
         .from("orders")
         .select("id, product_name, base_price, sale_price, size, customer_name, customer_phone, status, payment_type, created_at")
-        .eq("manager_id", user.id)
+        .eq("manager_id", uid)
         .order("created_at", { ascending: false })
         .limit(50);
 
-      if (error) {
-        console.error("[ORDERS] Error cargando pedidos:", error.message);
-      } else if (data) {
-        setOrders(data as Order[]);
-      }
-    } catch (err) {
-      console.error("[ORDERS] Excepción:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project]);
-
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+      if (error) throw new Error(error.message);
+      return (data as Order[]) || [];
+    },
+    staleTime: 120_000, // 2 min
+  });
 
   const filteredOrders = statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter);
 
@@ -95,6 +77,18 @@ function OrdersContent() {
     acc[o.status] = (acc[o.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  // Error visible en UI
+  if (ordersError) {
+    return (
+      <div className="p-6 pb-24">
+        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando pedidos</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{ordersError.message}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 pb-24 space-y-4">
@@ -112,7 +106,7 @@ function OrdersContent() {
         })}
       </motion.div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
       ) : filteredOrders.length === 0 ? (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="rounded-[24px] card-filled border-dashed border-border/70 p-8 text-center">

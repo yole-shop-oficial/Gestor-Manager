@@ -3,10 +3,11 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
+import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
   ArrowLeft, Package, DollarSign, User, Phone, MapPin,
   Truck, Clock, FileText, Loader2, CheckCircle2, XCircle,
@@ -43,6 +44,11 @@ interface Order {
   order_images: OrderImage[];
 }
 
+interface OrderDetailData {
+  order: Order;
+  imageUrls: string[];
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   pending: { label: "Pendiente", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300", icon: Clock },
   confirmed: { label: "Confirmado", color: "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300", icon: CheckCircle2 },
@@ -63,60 +69,49 @@ export default function OrderDetailPage() {
 
 function OrderDetailContent() {
   const { user, client, project, profile } = useSession();
+  const queryClient = useQueryClient();
   const params = useParams();
   const router = useRouter();
   const orderId = params.id as string;
-
-  const [order, setOrder] = useState<Order | null>(null);
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [changingStatus, setChangingStatus] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const isAdmin = profile?.role === "admin";
 
-  const loadOrder = useCallback(async () => {
-    if (!user || !project || !orderId) return;
-    setLoading(true);
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data, isLoading, error: queryError } = useSupabaseQuery<OrderDetailData>({
+    key: ["order-detail", orderId],
+    queryFn: async (supabase, uid) => {
       const { data, error: fetchError } = await supabase
         .from("orders")
         .select("*, order_images(*)")
         .eq("id", orderId)
         .single();
 
-      if (fetchError) { setError("Pedido no encontrado"); return; }
-      if (!data) { setError("Pedido no encontrado"); return; }
+      if (fetchError) throw new Error("Pedido no encontrado");
+      if (!data) throw new Error("Pedido no encontrado");
 
       // Solo el dueño o admin puede ver
-      if (data.manager_id !== user.id && !isAdmin) {
-        setError("No tienes permiso para ver este pedido");
-        return;
+      if (data.manager_id !== uid && !isAdmin) {
+        throw new Error("No tienes permiso para ver este pedido");
       }
 
-      setOrder(data as Order);
-
       // Cargar URLs de imágenes
+      let imageUrls: string[] = [];
       if (data.order_images && data.order_images.length > 0) {
-        const urls = data.order_images
-          .sort((a: OrderImage, b: OrderImage) => a.sort_order - b.sort_order)
-          .map((img: OrderImage) => {
+        imageUrls = (data.order_images as OrderImage[])
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((img) => {
             const { data: urlData } = supabase.storage.from("order-images").getPublicUrl(img.storage_path);
             return urlData.publicUrl;
           });
-        setImageUrls(urls);
       }
-    } catch (err: any) {
-      setError(err.message || "Error cargando pedido");
-    } finally {
-      setLoading(false);
-    }
-  }, [user, client, project, orderId, isAdmin]);
 
-  useEffect(() => { loadOrder(); }, [loadOrder]);
+      return { order: data as Order, imageUrls };
+    },
+    staleTime: 30_000, // 30s
+  });
+
+  const [changingStatus, setChangingStatus] = useState(false);
+
+  const order = data?.order ?? null;
+  const imageUrls = data?.imageUrls ?? [];
 
   const changeStatus = async (newStatus: string) => {
     if (!order || !client || !project) return;
@@ -129,17 +124,26 @@ function OrderDetailContent() {
         .update({ status: newStatus })
         .eq("id", order.id);
 
-      if (updateError) { setError("Error: " + updateError.message); return; }
-      // El trigger SQL se encarga de wallet + notificaciones automáticamente
-      setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
+      if (updateError) {
+        alert("Error: " + updateError.message);
+      } else {
+        // Invalidar queries afectadas
+        invalidate.orderDetail(queryClient, orderId);
+        invalidate.orders(queryClient, order.manager_id);
+        invalidate.gestorDashboard(queryClient, order.manager_id);
+        if (isAdmin) {
+          invalidate.adminDashboard(queryClient);
+          invalidate.adminAnalytics(queryClient);
+        }
+      }
     } catch (err: any) {
-      setError(err.message);
+      alert(err.message);
     } finally {
       setChangingStatus(false);
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -147,18 +151,17 @@ function OrderDetailContent() {
     );
   }
 
-  if (error || !order) {
+  if (queryError || !order) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center">
         <AlertTriangle className="w-16 h-16 text-yellow-500 mb-4" />
-        <h2 className="text-xl font-bold mb-2">{error || "Pedido no encontrado"}</h2>
+        <h2 className="text-xl font-bold mb-2">{queryError?.message || "Pedido no encontrado"}</h2>
         <button onClick={() => router.back()} className="mt-4 text-primary font-bold text-sm">Volver</button>
       </div>
     );
   }
 
   const statusConfig = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
-  const StatusIcon = statusConfig.icon;
   const commission = order.sale_price - order.base_price - order.delivery_price;
 
   return (

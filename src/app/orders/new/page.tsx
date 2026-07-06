@@ -3,10 +3,11 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { useSession, invalidate } from "@/hooks";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
   ArrowLeft, Package, DollarSign, User, Phone, MapPin,
   Truck, Clock, FileText, Loader2, CheckCircle2,
@@ -31,6 +32,7 @@ export default function NewOrderPage() {
 function NewOrderContent() {
   const { user, client, project, profile, isActive } = useSession();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +159,12 @@ function NewOrderContent() {
         }
       }
 
-      // Las notificaciones al admin las maneja el trigger SQL automáticamente
+      // Invalidar queries afectadas para que se refresquen
+      const uid = user.id;
+      invalidate.orders(queryClient, uid);
+      invalidate.gestorDashboard(queryClient, uid);
+      invalidate.gestorAnalytics(queryClient, uid);
+
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || "Error inesperado");

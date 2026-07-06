@@ -1,8 +1,6 @@
 "use client";
 
-import { useSession } from "@/hooks";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
 import { motion } from "framer-motion";
 import {
   ShoppingCart,
@@ -34,56 +32,47 @@ interface DashboardStats {
   pendingOrders: number;
   soldOrders: number;
   balance: number;
-  profileLoading: boolean;
 }
 
 export function GestorDashboard() {
-  const { user, client, project, profile, isActive, isPending } = useSession();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalOrders: 0,
-    pendingOrders: 0,
-    soldOrders: 0,
-    balance: 0,
-    profileLoading: true,
-  });
+  const { user, profile, isActive, isPending } = useSession();
+  const userId = user?.id ?? "";
 
-  const loadData = useCallback(async () => {
-    if (!user || !project) {
-      setStats((s) => ({ ...s, profileLoading: false }));
-      return;
-    }
-
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
+  const { data: stats, isLoading: statsLoading, error: statsError } = useSupabaseQuery<DashboardStats>({
+    key: ["gestor-dashboard", userId],
+    queryFn: async (client, uid) => {
       const [totalRes, pendingRes, soldRes, walletRes] = await Promise.all([
-        supabase.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", user.id),
-        supabase.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", user.id).eq("status", "pending"),
-        supabase.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", user.id).eq("status", "sold"),
-        supabase.from("wallet_entries").select("amount").eq("manager_id", user.id),
+        client.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", uid),
+        client.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", uid).eq("status", "pending"),
+        client.from("orders").select("*", { count: "exact", head: true }).eq("manager_id", uid).eq("status", "sold"),
+        client.from("wallet_entries").select("amount").eq("manager_id", uid),
       ]);
 
       const balance = walletRes.data?.reduce((sum: number, entry: any) => sum + Number(entry.amount), 0) || 0;
 
-      setStats({
+      return {
         totalOrders: totalRes.count || 0,
         pendingOrders: pendingRes.count || 0,
         soldOrders: soldRes.count || 0,
         balance,
-        profileLoading: false,
-      });
-    } catch (err) {
-      console.error("[GESTOR DASHBOARD] Error:", err);
-      setStats((s) => ({ ...s, profileLoading: false }));
-    }
-  }, [user, client, project]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+      };
+    },
+    staleTime: 30_000, // 30s
+  });
 
   const displayName = profile?.full_name || profile?.username || user?.email?.split("@")[0] || "Gestor";
+
+  // Error visible en UI (usuario sin DevTools)
+  if (statsError) {
+    return (
+      <div className="p-6 pb-24">
+        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando dashboard</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{statsError.message}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 pb-24 space-y-5">
@@ -135,27 +124,28 @@ export function GestorDashboard() {
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="w-4 h-4 text-white/70" />
             <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Saldo disponible</span>
+            {statsLoading && <Loader2 className="w-3 h-3 animate-spin text-white/50" />}
           </div>
-          <p className="text-3xl font-black tracking-tight mb-3">${stats.balance.toFixed(2)}</p>
+          <p className="text-3xl font-black tracking-tight mb-3">${(stats?.balance ?? 0).toFixed(2)}</p>
           <div className="flex items-center gap-4 text-xs text-white/70">
-            <span className="flex items-center gap-1"><Package className="w-3 h-3" /> {stats.soldOrders} vendidos</span>
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {stats.pendingOrders} pendientes</span>
+            <span className="flex items-center gap-1"><Package className="w-3 h-3" /> {stats?.soldOrders ?? 0} vendidos</span>
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {stats?.pendingOrders ?? 0} pendientes</span>
           </div>
         </div>
       </motion.div>
 
       {/* Stats */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="grid grid-cols-3 gap-3">
-        <StatCard icon={ShoppingCart} label="Pedidos" value={stats.totalOrders} gradient="from-blue-500 to-cyan-500" />
-        <StatCard icon={CheckCircle2} label="Vendidos" value={stats.soldOrders} gradient="from-emerald-500 to-green-500" />
-        <StatCard icon={TrendingUp} label="Comisión" value={`$${stats.balance.toFixed(0)}`} gradient="from-violet-500 to-purple-500" />
+        <StatCard icon={ShoppingCart} label="Pedidos" value={stats?.totalOrders ?? 0} gradient="from-blue-500 to-cyan-500" loading={statsLoading} />
+        <StatCard icon={CheckCircle2} label="Vendidos" value={stats?.soldOrders ?? 0} gradient="from-emerald-500 to-green-500" loading={statsLoading} />
+        <StatCard icon={TrendingUp} label="Comisión" value={`$${(stats?.balance ?? 0).toFixed(0)}`} gradient="from-violet-500 to-purple-500" loading={statsLoading} />
       </motion.div>
 
       {/* Acciones rápidas */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="space-y-2">
         <h2 className="text-sm font-semibold pl-1">Acciones rápidas</h2>
-        <QuickAction icon={ShoppingCart} label="Ver mis pedidos" desc={`${stats.totalOrders} pedidos registrados`} href="/orders" gradient="from-blue-500 to-cyan-500" />
-        <QuickAction icon={Wallet} label="Mi billetera" desc={`Saldo: $${stats.balance.toFixed(2)}`} href="/wallet" gradient="from-violet-500 to-purple-500" />
+        <QuickAction icon={ShoppingCart} label="Ver mis pedidos" desc={`${stats?.totalOrders ?? 0} pedidos registrados`} href="/orders" gradient="from-blue-500 to-cyan-500" />
+        <QuickAction icon={Wallet} label="Mi billetera" desc={`Saldo: $${(stats?.balance ?? 0).toFixed(2)}`} href="/wallet" gradient="from-violet-500 to-purple-500" />
       </motion.div>
 
       {/* Analytics del gestor */}
@@ -164,13 +154,17 @@ export function GestorDashboard() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, gradient }: { icon: React.ElementType; label: string; value: number | string; gradient: string }) {
+function StatCard({ icon: Icon, label, value, gradient, loading }: { icon: React.ElementType; label: string; value: number | string; gradient: string; loading?: boolean }) {
   return (
     <div className="rounded-[20px] card-filled p-3 space-y-2">
       <div className={`w-8 h-8 rounded-[12px] bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg`}>
         <Icon className="w-4 h-4 text-white" />
       </div>
-      <p className="text-lg font-bold leading-none">{value}</p>
+      {loading ? (
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      ) : (
+        <p className="text-lg font-bold leading-none">{value}</p>
+      )}
       <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
     </div>
   );
