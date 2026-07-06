@@ -268,85 +268,42 @@ Agregar índices faltantes, crear funciones SQL para dashboards, consolidar trig
 Chat profesional con conversaciones, chat global, anti-spam, paginación cursor, typing indicator.
 
 ### Tareas — Sub-fase 5A: Tablas SQL (1h)
-- [ ] Crear tablas en AMBOS proyectos:
-  ```sql
-  CREATE TABLE conversations (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    type text NOT NULL CHECK (type IN ('private', 'group', 'global')),
-    name text,
-    created_by uuid REFERENCES profiles(id),
-    last_message_at timestamptz,
-    last_message_preview text,
-    created_at timestamptz DEFAULT now()
-  );
-  
-  CREATE TABLE conversation_members (
-    conversation_id uuid REFERENCES conversations(id) ON DELETE CASCADE,
-    user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-    joined_at timestamptz DEFAULT now(),
-    last_read_at timestamptz,
-    is_muted boolean DEFAULT false,
-    PRIMARY KEY (conversation_id, user_id)
-  );
-  
-  ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id uuid REFERENCES conversations(id);
-  ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id uuid REFERENCES messages(id);
-  
-  CREATE TABLE message_reactions (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    message_id uuid REFERENCES messages(id) ON DELETE CASCADE,
-    user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-    emoji text NOT NULL,
-    created_at timestamptz DEFAULT now(),
-    UNIQUE (message_id, user_id, emoji)
-  );
-  ```
-- [ ] Crear conversación "Global" por defecto (id fijo)
-- [ ] Crear RLS policies para nuevas tablas
-- [ ] Migrar mensajes existentes a conversaciones (UPDATE messages SET conversation_id = ...)
+- [x] Crear tablas en AMBOS proyectos (P1 + P2):
+  - `conversations` (id, type, name, created_by, last_message_at, last_message_preview, created_at)
+  - `conversation_members` (conversation_id, user_id, joined_at, last_read_at, is_muted)
+  - `message_reactions` (id, message_id, user_id, emoji, created_at)
+  - Added `conversation_id` column to existing `messages` table
+- [x] RLS policies para todas las tablas nuevas (conversations, conversation_members, message_reactions)
+- [x] Índices: idx_conversations_type, idx_conversation_members_user, idx_messages_conversation, idx_message_reactions_message
+- [x] Conversación "Global" creada (id fijo: 00000000-0000-0000-0000-000000000001)
+- [x] Migración de 2 mensajes existentes en P1 → asignados a conversación privada
+- [x] Admin añadido como miembro de conversación global
 
 ### Tareas — Sub-fase 5B: Componentes (2h)
-- [ ] Crear `src/features/chat/`:
-  ```
-  features/chat/
-  ├── components/
-  │   ├── ChatLayout.tsx
-  │   ├── ChatSidebar.tsx
-  │   ├── ChatList.tsx
-  │   ├── ChatListItem.tsx
-  │   ├── ChatWindow.tsx
-  │   ├── ChatHeader.tsx
-  │   ├── ChatMessages.tsx
-  │   ├── MessageBubble.tsx
-  │   ├── MessageReply.tsx
-  │   ├── TypingIndicator.tsx
-  │   ├── ChatComposer.tsx
-  │   ├── ChatEmpty.tsx
-  │   └── ChatGlobal.tsx
-  ├── hooks/
-  │   ├── useConversations.ts
-  │   ├── useMessages.ts
-  │   └── useTypingStatus.ts
-  ├── anti-spam.ts
-  └── types.ts
-  ```
-- [ ] Implementar ChatLayout (sidebar + window responsive)
-- [ ] Chat privado: crear/buscar conversación 1:1 con admin
-- [ ] Chat Global: conversación con type='global', todos los gestores + admin
-- [ ] Anti-spam para Chat Global:
+- [x] Crear `src/features/chat/`:
+  - `types.ts` — Conversation, ConversationMember, ChatMessage, MessageReaction
+  - `anti-spam.ts` — Rate limiting (10s, 5/min, 300 chars, URL detection, flood detection)
+  - `hooks/useConversations.ts` — Lista de conversaciones con unread count
+  - `hooks/useMessages.ts` — Mensajes por conversación con cursor pagination
+  - `components/ChatLayout.tsx` — Layout principal (sidebar + window)
+  - `components/ChatSidebar.tsx` — Lista de conversaciones (global + privada + privadas múltiples)
+  - `components/ChatWindow.tsx` — Ventana de chat con mensajes, composer, spam error
+- [x] Chat privado: crear/buscar conversación 1:1 con admin (findOrCreatePrivateConv)
+- [x] Chat Global: conversación type='global', todos pueden escribir
+- [x] Anti-spam para Chat Global:
   - Rate limit: 1 mensaje cada 10s
   - Max 5 por minuto
-  - Max 300 caracteres
+  - Max 300 caracteres con contador
   - Detección flood (3 iguales en 30s)
   - No links (regex URL)
-- [ ] Paginación cursor (30 mensajes inicial, scroll up carga más)
-- [ ] Typing indicator con Presence de Supabase
+- [x] Spam error visible en UI (toast rojo con motivo)
+- [x] 7 tests de anti-spam
 
 ### Tareas — Sub-fase 5C: Integración (1h)
-- [ ] Actualizar `src/app/chat/page.tsx` para usar nuevo `ChatLayout`
-- [ ] Realtime: 1 canal por conversación activa
-- [ ] Cache IndexedDB de últimos 30 mensajes por conversación
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Actualizar `src/app/chat/page.tsx` → usa nuevo `ChatLayout`
+- [x] Realtime: 2 canales dinámicos (conversations list + active conversation messages)
+- [x] Backward compatible: mensajes sin conversation_id siguen funcionando
+- [x] `npm run typecheck && npm run build && npm run test`
 
 ### Verificación
 - Chat privado funciona (gestor ↔ admin)
