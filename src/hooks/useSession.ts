@@ -149,25 +149,57 @@ async function initAuthSingleton() {
     logger.setUser(result.user.id, result.project);
 
     notifyListeners();
-
-    // Listen for auth changes
-    result.client.auth.onAuthStateChange((_event, session) => {
-      singletonUser = session?.user ?? null;
-      if (!session?.user) {
-        singletonClient = null;
-        singletonProject = null;
-        profileCache.clear();
-        logger.setUser(null, null);
-        logger.flush(); // final flush before logout
-      }
-      notifyListeners();
-    });
   } else {
     singletonUser = null;
     singletonClient = null;
     singletonProject = null;
     singletonLoading = false;
     notifyListeners();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CRITICAL FIX: Always register onAuthStateChange on BOTH projects.
+  //
+  // Before this fix, the listener was only registered when a session
+  // was found. This meant that after loginWithRoundRobin() succeeded,
+  // the singleton never got notified → AuthGate redirected to /welcome.
+  //
+  // Now we always register listeners so that:
+  // - SIGNED_IN events from login are captured
+  // - SIGNED_OUT events are captured
+  // - TOKEN_REFRESHED events keep the session alive
+  //
+  // We only clear the singleton on SIGNED_OUT from the ACTIVE project
+  // to avoid the other project's null INITIAL_SESSION from clearing it.
+  // ═══════════════════════════════════════════════════════════
+
+  for (const p of [1, 2] as const) {
+    const config = getProjectConfig(p);
+    if (!config.url || !config.anonKey) continue;
+    const client = createLoginClient(config);
+
+    client.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        // User signed in (or token refreshed) on this project
+        singletonUser = session.user;
+        singletonClient = client;
+        singletonProject = p;
+        saveUserProject(p);
+        logger.setUser(session.user.id, p);
+        notifyListeners();
+      } else if (event === "SIGNED_OUT" && singletonProject === p) {
+        // Only clear if the user signed out from the ACTIVE project.
+        // This prevents the other project's INITIAL_SESSION (null)
+        // from clearing a valid session.
+        singletonUser = null;
+        singletonClient = null;
+        singletonProject = null;
+        profileCache.clear();
+        logger.setUser(null, null);
+        logger.flush();
+        notifyListeners();
+      }
+    });
   }
 
   singletonInitialized = true;
