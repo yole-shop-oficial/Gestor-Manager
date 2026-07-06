@@ -1,20 +1,22 @@
 # ============================================================
-# VARIABLES DE ENTORNO PARA VERCEL
+# VARIABLES DE ENTORNO PARA VERCEL — YOLE SHOP APP
 # ============================================================
-# Cómo importar en Vercel:
-#   1. Ve a tu proyecto en Vercel → Settings → Environment Variables
-#   2. Puedes importar este archivo o agregarlas una por una
-#   3. Para importar: clic en "Import .env File" y sube este archivo
-#
-# ⚠️ NO subas este archivo a GitHub
-# ⚠️ Los valores son los de tus proyectos Supabase
-# ⚠️ Ya NO se necesitan variables VITE_ (Next.js usa NEXT_PUBLIC_)
+# CONFIGURADAS AUTOMÁTICAMENTE el 2026-07-06
+# Proyectos Supabase NUEVOS (organización: YOLE SHOP)
 # ============================================================
 
-# ── Proyecto 1 (Auth + Identidad) ──
-NEXT_PUBLIC_SUPABASE_URL_1=PEGAR_AQUI_URL_PROYECTO_1
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1=PEGAR_AQUI_ANON_KEY_PROYECTO_1
+NEXT_PUBLIC_SUPABASE_URL_1=https://lustmqeqbninkavixttz.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1c3RtcWVxYm5pbmthdml4dHR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMTMxNjUsImV4cCI6MjA5ODg4OTE2NX0.hvBQsxSTYUzlLPgjCpALmTBkvvaF885-gJlBH-w1KdI
 
-# ── Proyecto 2 (Business) ──
-NEXT_PUBLIC_SUPABASE_URL_2=PEGAR_AQUI_URL_PROYECTO_2
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2=PEGAR_AQUI_ANON_KEY_PROYECTO_2
+NEXT_PUBLIC_SUPABASE_URL_2=https://lqwyidsixjzjffwtrltw.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxxd3lpZHNpeGp6amZmd3RybHR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMTMxNTMsImV4cCI6MjA5ODg4OTE1M30.m8itm4V3LsDrfpzQv7R_EvVGDd397gY7bSTCKmpDE2k
+
+NEXT_TELEMETRY_DISABLED=1
+
+# ============================================================
+# DEPRECATED (legacy, kept for compatibility)
+# ============================================================
+VITE_SUPABASE_URL_1=https://lustmqeqbninkavixttz.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY_1=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1c3RtcWVxYm5pbmthdml4dHR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMTMxNjUsImV4cCI6MjA5ODg4OTE2NX0.hvBQsxSTYUzlLPgjCpALmTBkvvaF885-gJlBH-w1KdI
+VITE_SUPABASE_URL_2=https://lqwyidsixjzjffwtrltw.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY_2=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxxd3lpZHNpeGp6amZmd3RybHR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMTMxNTMsImV4cCI6MjA5ODg4OTE1M30.m8itm4V3LsDrfpzQv7R_EvVGDd397gY7bSTCKmpDE2k
