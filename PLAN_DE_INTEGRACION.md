@@ -168,31 +168,44 @@ Chat mensajes     → 0 (siempre fresh)
 Reducir de 4 canales permanentes a 1-2 dinámicos. 60 conexiones = 60 usuarios en lugar de 15.
 
 ### Tareas
-- [ ] Crear `src/hooks/useRealtime.ts`:
-  ```typescript
-  function useRealtime(config: {
-    channel: string;
-    table: string;
-    filter?: string;
-    event?: "*" | "INSERT" | "UPDATE" | "DELETE";
-    onEvent: (payload: RealtimePostgresChangesPayload) => void;
-    enabled?: boolean;  // false = no suscribe
-  }): void
-  ```
+- [x] Crear `src/hooks/useRealtime.ts`:
   - Auto-subscribe en mount, auto-unsubscribe en unmount
-  - Page Visibility API: pausa cuando tab pierde foco
+  - Page Visibility API: detecta cuando tab pierde foco
   - Nunca abre canal si `enabled: false`
-- [ ] Refactorizar Chat realtime:
+  - Deduplicación de canales con tracker
+  - Logging de estado (SUBSCRIBED, CHANNEL_ERROR, TIMED_OUT)
+- [x] Refactorizar Chat realtime:
   - ANTES: 2 canales (INSERT recipient + INSERT sender)
-  - DESPUÉS: 1 canal con filter `or(recipient_id.eq.{userId}, sender_id.eq.{userId})`
-  - Solo activo cuando el usuario está en `/chat`
-- [ ] Refactorizar Notifications realtime:
-  - ANTES: 2 canales (INSERT + UPDATE)
+  - DESPUÉS: 1 canal con filter `or(sender_id.eq.{userId},recipient_id.eq.{userId})`
+  - Solo activo cuando el componente está montado (en `/chat`)
+  - Usa hook `useRealtime` en lugar de useEffect manual
+- [x] Refactorizar Notifications realtime:
+  - ANTES: 2 canales (INSERT + UPDATE) en useEffect manual
   - DESPUÉS: 1 canal con event `*` y filter `user_id.eq.{userId}`
-  - Solo activo cuando el usuario está en `/notifications` o en dashboard
-- [ ] Header notification dot: usar React Query invalidation en lugar de subscription permanente
-- [ ] Cerrar TODOS los canales al cambiar de ruta (excepto el de notifications si está en header)
-- [ ] `npm run typecheck && npm run build && npm run test`
+  - Solo activo en `/notifications` (componente montado)
+  - Usa hook `useRealtime` en lugar de useEffect manual
+- [x] Header notification dot: conectado a datos reales via `useUnreadNotifications`
+  - ANTES: dot rojo animado infinito hardcodeado (siempre visible)
+  - DESPUÉS: badge con conteo real, solo visible si hay notificaciones sin leer
+  - `useUnreadNotifications`: query `["unread-count", userId]` + 1 canal ligero permanente
+  - Badge muestra número (1-9+), se actualiza en tiempo real
+- [x] Cerrar TODOS los canales al desmontar componente (auto-cleanup en useRealtime)
+- [x] `npm run typecheck && npm run build && npm run test`
+
+### Canales realtime por ruta (después de FASE 3)
+```
+Siempre activo (header badge):
+  └── notif-badge-{userId} (INSERT notifications, lightweight count invalidation)
+
+Solo en /chat:
+  └── chat-msgs-{userId} (INSERT messages, or-filter)
+
+Solo en /notifications:
+  └── notifs-{userId} (INSERT+UPDATE+DELETE notifications)
+
+Total máximo: 2 canales simultáneos (header + página actual)
+ANTES: 4+ canales permanentes por usuario → AHORA: 1-2 dinámicos
+```
 
 ### Verificación
 - Abrir chat → Network tab: 1 canal realtime

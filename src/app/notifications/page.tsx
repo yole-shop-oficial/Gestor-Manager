@@ -3,11 +3,9 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useSession, useSupabaseQuery, invalidate, useRealtime } from "@/hooks";
+import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { RealtimeChannel } from "@supabase/supabase-js";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
   Bell,
   CheckCircle2,
@@ -17,7 +15,6 @@ import {
   UserCheck,
   Ban,
   Loader2,
-  AlertTriangle,
 } from "lucide-react";
 
 interface Notification {
@@ -42,7 +39,6 @@ function NotificationsContent() {
   const { user, client, project } = useSession();
   const queryClient = useQueryClient();
   const userId = user?.id ?? "";
-  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const { data: notifications = [], isLoading, error: notifError } = useSupabaseQuery<Notification[]>({
     key: ["notifications", userId],
@@ -57,57 +53,31 @@ function NotificationsContent() {
       if (error) throw new Error(error.message);
       return (data as Notification[]) || [];
     },
-    staleTime: 30_000, // 30s
+    staleTime: 30_000,
   });
 
-  // ─── Real-time subscription para notificaciones nuevas ───
-  useEffect(() => {
-    if (!user || !client || !project) return;
-
-    const config = getProjectConfig(project);
-    const supabase = client || createLoginClient(config);
-
-    const channel = supabase
-      .channel("notifications-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          // Invalidar cache de React Query → se refresca automáticamente
-          invalidate.notifications(queryClient, userId);
-        }
-      )
-      .subscribe((status) => {
-        console.log("[NOTIFICATIONS] Realtime status:", status);
-      });
-
-    channelRef.current = channel;
-
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-  }, [user, client, project, queryClient, userId]);
+  // ─── Single realtime channel for notifications (all events, filtered by user) ───
+  useRealtime({
+    channel: `notifs-${userId}`,
+    table: "notifications",
+    filter: `user_id=eq.${userId}`,
+    event: "*",
+    onEvent: () => {
+      invalidate.notifications(queryClient, userId);
+    },
+    enabled: !!userId,
+  });
 
   const markAllRead = async () => {
     if (!user || !client || !project) return;
-    const config = getProjectConfig(project);
-    const supabase = client || createLoginClient(config);
 
-    await supabase
+    await client
       .from("notifications")
       .update({ is_read: true })
       .eq("user_id", user.id)
       .eq("is_read", false);
 
-    // Invalidar para refrescar
+    // Invalidate to refresh
     invalidate.notifications(queryClient, userId);
   };
 
@@ -130,7 +100,6 @@ function NotificationsContent() {
     return "text-primary";
   };
 
-  // Guardar timestamp actual en estado para no llamar Date.now() en render
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -149,7 +118,6 @@ function NotificationsContent() {
     return `${days}d`;
   }, [now]);
 
-  // Error visible en UI
   if (notifError) {
     return (
       <div className="p-6 pb-24">
@@ -180,7 +148,7 @@ function NotificationsContent() {
 
       {/* Indicador en tiempo real */}
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <span className="w-2 h-2 rounded-full bg-green-500" />
         Notificaciones en tiempo real activas
       </div>
 

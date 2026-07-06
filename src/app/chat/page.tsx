@@ -3,10 +3,9 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { useSession, useSupabaseQuery, invalidate, useRealtime } from "@/hooks";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
   MessageCircle,
@@ -14,7 +13,6 @@ import {
   Loader2,
   User,
   Headphones,
-  AlertTriangle,
 } from "lucide-react";
 
 interface Message {
@@ -49,7 +47,6 @@ function ChatContent() {
   const { data: chatData, isLoading, error: chatError } = useSupabaseQuery<ChatData>({
     key: ["chat", userId],
     queryFn: async (supabase, uid) => {
-      // Obtener admin ID
       const { data: adminProfile } = await supabase
         .from("profiles")
         .select("id")
@@ -75,70 +72,35 @@ function ChatContent() {
 
       return { messages, adminId };
     },
-    staleTime: 0, // siempre fresh — chat necesita datos en vivo
+    staleTime: 0, // siempre fresh
   });
 
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Combinar datos del servidor con mensajes optimistas
+  // ─── Single realtime channel for chat (INSERT only, filtered by user) ───
+  useRealtime({
+    channel: `chat-msgs-${userId}`,
+    table: "messages",
+    filter: `or(sender_id.eq.${userId},recipient_id.eq.${userId})`,
+    event: "INSERT",
+    onEvent: () => {
+      // Invalidate chat cache → React Query refetches
+      invalidate.chat(queryClient, userId);
+      // Clear optimistic messages since server now has them
+      setOptimisticMessages([]);
+    },
+    enabled: !!userId && !!client, // Only when on this page (component is mounted)
+  });
+
+  // Combine server + optimistic messages
   const serverMessages = chatData?.messages || [];
   const adminId = chatData?.adminId ?? null;
   const allMessages = [...serverMessages, ...optimisticMessages.filter(
     (om) => !serverMessages.some((sm) => sm.id === om.id)
   )];
-
-  // ─── Real-time subscription para mensajes nuevos ───
-  useEffect(() => {
-    if (!user || !client || !project) return;
-
-    const config = getProjectConfig(project);
-    const supabase = client || createLoginClient(config);
-
-    const channel = supabase
-      .channel("chat-messages")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `recipient_id=eq.${user.id}`,
-        },
-        () => {
-          invalidate.chat(queryClient, userId);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `sender_id=eq.${user.id}`,
-        },
-        () => {
-          invalidate.chat(queryClient, userId);
-          // Limpiar mensajes optimistas ya que el servidor los tiene
-          setOptimisticMessages([]);
-        }
-      )
-      .subscribe((status) => {
-        console.log("[CHAT] Realtime status:", status);
-      });
-
-    channelRef.current = channel;
-
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-  }, [user, client, project, queryClient, userId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -151,7 +113,7 @@ function ChatContent() {
     setNewMessage("");
     setSending(true);
 
-    // Mensaje optimista
+    // Optimistic message
     const optimisticMsg: Message = {
       id: `temp-${Date.now()}`,
       sender_id: user.id,
@@ -174,11 +136,8 @@ function ChatContent() {
 
       if (error) {
         console.error("[CHAT] Error enviando mensaje:", error.message);
-        // Quitar mensaje optimista en caso de error
         setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-        setNewMessage(body); // Restaurar texto
-      } else {
-        // El realtime invalidará la query y limpiará los optimistas
+        setNewMessage(body);
       }
     } catch (err) {
       console.error("[CHAT] Excepción enviando:", err);
