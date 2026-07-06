@@ -13,9 +13,21 @@ import {
   CheckCircle2,
   ArrowRight,
   Plus,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { GestorAnalytics } from "./GestorAnalytics";
+import dynamic from "next/dynamic";
+
+const GestorAnalytics = dynamic(
+  () => import("./GestorAnalytics").then((m) => ({ default: m.GestorAnalytics })),
+  {
+    loading: () => (
+      <div className="flex justify-center py-8">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    ),
+  }
+);
 
 interface DashboardStats {
   totalOrders: number;

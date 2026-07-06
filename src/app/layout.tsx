@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 
 export const metadata: Metadata = {
   title: "YOLE SHOP",
-  description: "Gestión profesional de pedidos, comisiones y pagos para gestores",
+  description: "YOLE SHOP v2.0 — Gestión profesional de pedidos, comisiones y pagos para gestores",
 
   // Manifest para PWA (Android)
   manifest: "/manifest.json",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   // Open Graph
   openGraph: {
     title: "YOLE SHOP",
-    description: "Gestión profesional de pedidos, comisiones y pagos para gestores",
+    description: "YOLE SHOP v2.0 — Gestión profesional de pedidos, comisiones y pagos para gestores",
     type: "website",
     locale: "es_CU",
   },

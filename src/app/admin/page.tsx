@@ -23,7 +23,18 @@ import {
   Eye,
 } from "lucide-react";
 import Link from "next/link";
-import { AdminAnalytics } from "@/components/dashboard/AdminAnalytics";
+import dynamic from "next/dynamic";
+
+const AdminAnalytics = dynamic(
+  () => import("@/components/dashboard/AdminAnalytics").then((m) => ({ default: m.AdminAnalytics })),
+  {
+    loading: () => (
+      <div className="flex justify-center py-8">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    ),
+  }
+);
 
 interface GestorRow {
   id: string;

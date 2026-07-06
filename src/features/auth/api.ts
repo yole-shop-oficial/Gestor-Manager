@@ -8,6 +8,7 @@ import {
   getProjectConfig,
   type SelectedProject,
 } from "@/services/supabase/roundRobin";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 /**
  * Ping a Supabase project usando su propia API REST (con apikey header).
@@ -67,6 +68,15 @@ export async function registerGestor(
   log(`Hora: ${new Date().toLocaleString("es-CU", { timeZone: "America/Havana" })}`);
   log(`Email: ${values.email}`);
   log(`Online: ${navigator.onLine}`);
+
+  // ─── Rate limit: máximo 3 intentos de registro cada 2 minutos ───
+  const rateLimitKey = `register:${values.email}`;
+  if (!checkRateLimit(rateLimitKey, 3, 120_000)) {
+    throw Object.assign(
+      new Error("Demasiados intentos de registro. Espera 2 minutos."),
+      { diag: ["Rate limit alcanzado para " + values.email] }
+    );
+  }
 
   // ─── PASO 1: Hacer ping a ambos proyectos (con apikey) ───
   onProgress("Verificando conexión a bases de datos...");

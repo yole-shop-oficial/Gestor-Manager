@@ -8,6 +8,7 @@ import {
   loadUserProject,
   type SelectedProject,
 } from "@/services/supabase/roundRobin";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 /**
  * Inicia sesión buscando al usuario en ambos proyectos (round-robin).
@@ -21,6 +22,12 @@ export async function loginWithRoundRobin(
   email: string,
   password: string
 ): Promise<{ error: string | null; project: SelectedProject | null }> {
+  // ─── Rate limit: máximo 5 intentos de login por minuto ───
+  const rateLimitKey = `login:${email}`;
+  if (!checkRateLimit(rateLimitKey, 5, 60_000)) {
+    return { error: "Demasiados intentos. Espera un minuto e inténtalo de nuevo.", project: null };
+  }
+
   // ─── Intentar con el proyecto guardado primero ───
   const savedProject = loadUserProject();
 

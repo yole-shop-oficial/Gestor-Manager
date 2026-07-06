@@ -1,9 +1,15 @@
 export const dynamic = "force-dynamic";
 
-// Healthcheck simple: en esta app usamos Supabase como base de datos
-// principal, así que no dependemos de la conexión PostgreSQL local del
-// template original. Este endpoint simplemente indica que la API está
-// viva y que el servidor puede responder.
 export async function GET() {
-  return Response.json({ ok: true });
+  return Response.json({
+    ok: true,
+    version: "2.0.0",
+    timestamp: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
+    environment: process.env.NODE_ENV || "development",
+    memory: {
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB",
+      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + "MB",
+    },
+  });
 }

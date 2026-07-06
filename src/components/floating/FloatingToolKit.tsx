@@ -37,17 +37,23 @@ export function FloatingToolKit() {
   // ─── Herramientas ───
 
   /**
-   * Ping a Supabase — FIX: Ya NO usa mode: "no-cors".
-   * Sin no-cors, el fetch realmente verifica si el servidor responde.
+   * Ping a Supabase usando REST API con apikey header.
+   * La raíz del proyecto Supabase no tiene CORS headers, así que
+   * fetch(url1) falla con error de CORS. Usamos /rest/v1/ con apikey.
    */
   const pingSupabase = async () => {
     const start = performance.now();
     try {
       const url1 = process.env.NEXT_PUBLIC_SUPABASE_URL_1;
-      if (url1) {
+      const key1 = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1;
+      if (url1 && key1) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
-        await fetch(url1, { method: "GET", signal: controller.signal });
+        await fetch(`${url1}/rest/v1/round_robin_counter?select=id&limit=1`, {
+          method: "GET",
+          headers: { apikey: key1, Authorization: `Bearer ${key1}` },
+          signal: controller.signal,
+        });
         clearTimeout(timeoutId);
       }
       const ms = Math.round(performance.now() - start);
@@ -67,17 +73,22 @@ export function FloatingToolKit() {
   };
 
   /**
-   * Medidor de velocidad — FIX: Ya NO usa mode: "no-cors".
+   * Medidor de velocidad usando REST API con apikey header (evita CORS).
    */
   const measureSpeed = async () => {
     setToolResults((r) => ({ ...r, speed: "Midiendo..." }));
     const start = performance.now();
     try {
       const url1 = process.env.NEXT_PUBLIC_SUPABASE_URL_1;
-      if (url1) {
+      const key1 = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_1;
+      if (url1 && key1) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
-        await fetch(url1, { method: "GET", signal: controller.signal });
+        await fetch(`${url1}/rest/v1/round_robin_counter?select=id&limit=1`, {
+          method: "GET",
+          headers: { apikey: key1, Authorization: `Bearer ${key1}` },
+          signal: controller.signal,
+        });
         clearTimeout(timeoutId);
       }
       const ms = performance.now() - start;
@@ -301,7 +312,7 @@ export function FloatingToolKit() {
               {/* Footer info */}
               <div className="px-4 py-3 border-t border-white/5">
                 <div className="flex items-center justify-between text-[10px] text-white/30">
-                  <span>YOLE SHOP v1.0</span>
+                  <span>YOLE SHOP v2.0</span>
                   <div className="flex items-center gap-1">
                     <Signal className="w-3 h-3" />
                     <span>{navigator.onLine ? "Online" : "Offline"}</span>

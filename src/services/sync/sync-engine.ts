@@ -1,6 +1,7 @@
 "use client";
 
 import { openDB, type IDBPDatabase } from "idb";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface PendingOperation {
   id: string;
@@ -54,7 +55,7 @@ async function getDB(): Promise<IDBPDatabase<OfflineDBSchema>> {
 }
 
 export async function createRealSyncEngine(
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   userId: string
 ): Promise<SyncEngine> {
   const db = await getDB();
@@ -88,7 +89,7 @@ export async function createRealSyncEngine(
 
 async function syncPendingOperations(
   db: IDBPDatabase<OfflineDBSchema>,
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
   const ops = await db.getAllFromIndex("pending_operations", "by-status", "pending");
@@ -97,7 +98,8 @@ async function syncPendingOperations(
       await db.put("pending_operations", { ...op, syncStatus: "syncing" });
       switch (op.type) {
         case "create-order": {
-          const { error } = await supabase.from("orders").insert([{ ...op.payload, manager_id: userId }]);
+          const payload = op.payload as Record<string, unknown>;
+          const { error } = await supabase.from("orders").insert([{ ...payload, manager_id: userId }]);
           if (error) throw error;
           break;
         }
@@ -108,7 +110,8 @@ async function syncPendingOperations(
           break;
         }
         case "request-payout": {
-          const { error } = await supabase.from("payout_requests").insert([{ ...op.payload, manager_id: userId }]);
+          const payload = op.payload as Record<string, unknown>;
+          const { error } = await supabase.from("payout_requests").insert([{ ...payload, manager_id: userId }]);
           if (error) throw error;
           break;
         }
@@ -121,7 +124,7 @@ async function syncPendingOperations(
   }
 }
 
-export async function cacheOrders(userId: string, supabase: any): Promise<void> {
+export async function cacheOrders(userId: string, supabase: SupabaseClient): Promise<void> {
   const db = await getDB();
   const { data } = await supabase.from("orders").select("*").eq("manager_id", userId).order("created_at", { ascending: false }).limit(50);
   if (data) {
