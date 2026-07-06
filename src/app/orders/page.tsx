@@ -3,8 +3,8 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery } from "@/hooks";
-import React, { useState, useMemo } from "react";
+import { useSession, useSupabaseInfiniteQuery } from "@/hooks";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
@@ -15,6 +15,7 @@ import {
   Loader2,
   Filter,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 
 interface Order {
@@ -31,6 +32,8 @@ interface Order {
 }
 
 type StatusFilter = "all" | "pending" | "confirmed" | "sold" | "cancelled";
+
+const PAGE_SIZE = 20;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   pending: { label: "Pendiente", color: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400", icon: Clock },
@@ -55,21 +58,67 @@ function OrdersContent() {
   const userId = user?.id ?? "";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  const { data: orders = [], isLoading, error: ordersError } = useSupabaseQuery<Order[]>({
+  // ─── Infinite query with cursor pagination ───
+  const {
+    flatData: orders,
+    totalLoaded,
+    isLoading,
+    error: ordersError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useSupabaseInfiniteQuery<Order>({
     key: ["orders", userId],
-    queryFn: async (client, uid) => {
-      const { data, error } = await client
+    queryFn: async (client, uid, cursor) => {
+      let query = client
         .from("orders")
         .select("id, product_name, base_price, sale_price, size, customer_name, customer_phone, status, payment_type, created_at")
         .eq("manager_id", uid)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(PAGE_SIZE + 1); // +1 to detect if there's a next page
 
+      // Cursor: filter by created_at < cursor (older items)
+      if (cursor) {
+        query = query.lt("created_at", cursor);
+      }
+
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
-      return (data as Order[]) || [];
+
+      const items = (data as Order[]) || [];
+      const hasMore = items.length > PAGE_SIZE;
+      const pageItems = hasMore ? items.slice(0, PAGE_SIZE) : items;
+      const nextCursor = hasMore && pageItems.length > 0
+        ? pageItems[pageItems.length - 1].created_at
+        : null;
+
+      return { data: pageItems, nextCursor };
     },
     staleTime: 120_000, // 2 min
   });
+
+  // ─── Infinite scroll via IntersectionObserver ───
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    const el = loadMoreRef.current;
+    if (el) observer.observe(el);
+
+    return () => {
+      if (el) observer.unobserve(el);
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const filteredOrders = useMemo(
     () => statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter),
@@ -104,7 +153,7 @@ function OrdersContent() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
-        <FilterChip active={statusFilter === "all"} onClick={() => setStatusFilter("all")} label={`Todos (${orders.length})`} />
+        <FilterChip active={statusFilter === "all"} onClick={() => setStatusFilter("all")} label={`Todos (${totalLoaded})`} />
         {Object.entries(STATUS_CONFIG).map(([key, config]) => {
           const count = statusCounts[key] || 0;
           if (count === 0) return null;
@@ -126,6 +175,19 @@ function OrdersContent() {
             {filteredOrders.map((order, index) => (
               <OrderCard key={order.id} order={order} index={index} />
             ))}
+          </div>
+
+          {/* Infinite scroll trigger + load more indicator */}
+          <div ref={loadMoreRef} className="flex flex-col items-center py-4">
+            {isFetchingNextPage && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Cargando más pedidos...
+              </div>
+            )}
+            {!hasNextPage && orders.length > 0 && (
+              <p className="text-xs text-muted-foreground">Todos los pedidos cargados ({totalLoaded})</p>
+            )}
           </div>
         </AnimatePresence>
       )}
@@ -156,7 +218,7 @@ const OrderCard = React.memo(function OrderCard({ order, index }: { order: Order
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      transition={{ delay: index * 0.03 }}
+      transition={{ delay: Math.min(index * 0.03, 0.3) }}
       onClick={() => router.push(`/orders/${order.id}`)}
       className="rounded-[20px] card-filled p-4 space-y-3 cursor-pointer active:scale-[0.98] transition-transform"
     >

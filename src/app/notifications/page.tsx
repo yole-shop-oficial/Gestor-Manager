@@ -3,8 +3,8 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery, invalidate, useRealtime } from "@/hooks";
-import { useState, useEffect, useCallback } from "react";
+import { useSession, useSupabaseInfiniteQuery, invalidate, useRealtime } from "@/hooks";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -25,6 +25,8 @@ interface Notification {
   created_at: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function NotificationsPage() {
   return (
     <AuthGate>
@@ -40,18 +42,40 @@ function NotificationsContent() {
   const queryClient = useQueryClient();
   const userId = user?.id ?? "";
 
-  const { data: notifications = [], isLoading, error: notifError } = useSupabaseQuery<Notification[]>({
+  // ─── Infinite query with cursor pagination ───
+  const {
+    flatData: notifications,
+    totalLoaded,
+    isLoading,
+    error: notifError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useSupabaseInfiniteQuery<Notification>({
     key: ["notifications", userId],
-    queryFn: async (supabase, uid) => {
-      const { data, error } = await supabase
+    queryFn: async (supabase, uid, cursor) => {
+      let query = supabase
         .from("notifications")
         .select("*")
         .eq("user_id", uid)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(PAGE_SIZE + 1);
 
+      if (cursor) {
+        query = query.lt("created_at", cursor);
+      }
+
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
-      return (data as Notification[]) || [];
+
+      const items = (data as Notification[]) || [];
+      const hasMore = items.length > PAGE_SIZE;
+      const pageItems = hasMore ? items.slice(0, PAGE_SIZE) : items;
+      const nextCursor = hasMore && pageItems.length > 0
+        ? pageItems[pageItems.length - 1].created_at
+        : null;
+
+      return { data: pageItems, nextCursor };
     },
     staleTime: 30_000,
   });
@@ -68,6 +92,29 @@ function NotificationsContent() {
     enabled: !!userId,
   });
 
+  // ─── Infinite scroll via IntersectionObserver ───
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    const el = loadMoreRef.current;
+    if (el) observer.observe(el);
+
+    return () => {
+      if (el) observer.unobserve(el);
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const markAllRead = async () => {
     if (!user || !client || !project) return;
 
@@ -81,24 +128,27 @@ function NotificationsContent() {
     invalidate.notifications(queryClient, userId);
   };
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.is_read).length,
+    [notifications]
+  );
 
-  const getIcon = (title: string) => {
+  const getIcon = useCallback((title: string) => {
     if (title.includes("pedido") || title.includes("Pedido")) return Package;
     if (title.includes("activada") || title.includes("aprobada")) return CheckCircle2;
     if (title.includes("denegada")) return XCircle;
     if (title.includes("bloqueada")) return Ban;
     if (title.includes("wallet") || title.includes("pago") || title.includes("retiro")) return Wallet;
     return Bell;
-  };
+  }, []);
 
-  const getIconColor = (title: string) => {
+  const getIconColor = useCallback((title: string) => {
     if (title.includes("activada") || title.includes("aprobada")) return "text-green-500";
     if (title.includes("denegada")) return "text-red-500";
     if (title.includes("bloqueada")) return "text-gray-500";
     if (title.includes("pedido") || title.includes("Pedido")) return "text-blue-500";
     return "text-primary";
-  };
+  }, []);
 
   const [now, setNow] = useState(() => Date.now());
 
@@ -189,6 +239,19 @@ function NotificationsContent() {
               </motion.div>
             );
           })}
+
+          {/* Infinite scroll trigger */}
+          <div ref={loadMoreRef} className="flex flex-col items-center py-4">
+            {isFetchingNextPage && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Cargando más...
+              </div>
+            )}
+            {!hasNextPage && notifications.length > 0 && (
+              <p className="text-xs text-muted-foreground">Todas las notificaciones cargadas ({totalLoaded})</p>
+            )}
+          </div>
         </div>
       )}
     </div>

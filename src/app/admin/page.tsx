@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } from "@/hooks";
 import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Loader2,
   ChevronRight,
+  ChevronDown,
   Package,
   Eye,
 } from "lucide-react";
@@ -103,17 +104,37 @@ function AdminContent() {
     enabled: isAdmin,
   });
 
-  // ─── Query 2: Gestores list ───
-  const { data: gestores = [], isLoading: gestoresLoading } = useSupabaseQuery<GestorRow[]>({
+  // ─── Query 2: Gestores list (infinite pagination) ───
+  const {
+    flatData: gestores,
+    totalLoaded: gestoresLoaded,
+    isLoading: gestoresLoading,
+    fetchNextPage: fetchMoreGestores,
+    hasNextPage: hasMoreGestores,
+    isFetchingNextPage: fetchingMoreGestores,
+  } = useSupabaseInfiniteQuery<GestorRow>({
     key: ["admin-gestores"],
-    queryFn: async (supabase) => {
-      const { data } = await supabase
+    queryFn: async (supabase, _uid, cursor) => {
+      let query = supabase
         .from("profiles")
         .select("id, full_name, username, email, phone, role, status, join_date, has_sales_experience, assigned_project")
         .neq("role", "admin")
         .order("created_at", { ascending: false })
-        .limit(20);
-      return (data as GestorRow[]) || [];
+        .limit(21);
+
+      if (cursor) {
+        query = query.lt("created_at", cursor);
+      }
+
+      const { data } = await query;
+      const items = (data as GestorRow[]) || [];
+      const hasMore = items.length > 20;
+      const pageItems = hasMore ? items.slice(0, 20) : items;
+      const nextCursor = hasMore && pageItems.length > 0
+        ? pageItems[pageItems.length - 1].join_date || pageItems[pageItems.length - 1].id
+        : null;
+
+      return { data: pageItems, nextCursor };
     },
     staleTime: 60_000, // 60s
     enabled: isAdmin,
@@ -400,7 +421,7 @@ function AdminContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Gestores registrados</h2>
-          <span className="text-xs text-muted-foreground">{gestores.length} total</span>
+          <span className="text-xs text-muted-foreground">{gestoresLoaded} cargados</span>
         </div>
 
         {gestoresLoading ? (
@@ -413,85 +434,107 @@ function AdminContent() {
             <p className="text-sm text-muted-foreground">No hay gestores registrados aún</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {gestores.map((g) => (
-              <motion.div
-                key={g.id}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="card-filled rounded-[18px] p-4 space-y-3"
+          <>
+            <div className="space-y-2">
+              {gestores.map((g) => (
+                <motion.div
+                  key={g.id}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="card-filled rounded-[18px] p-4 space-y-3"
+                >
+                  {/* Info del gestor */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
+                      <span className="text-white font-bold text-sm">
+                        {(g.full_name || g.username || "?")[0].toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold truncate">{g.full_name || g.username}</p>
+                        {statusBadge(g.status)}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{g.email}</p>
+                      <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
+                        {g.phone && <span>📞 +53 {g.phone.replace(/^\+53/, "").trim()}</span>}
+                        <span>🏷️ Proyecto {g.assigned_project}</span>
+                        <span>📅 {g.join_date}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Acciones de status */}
+                  {g.status === "pending" && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => changeUserStatus(g.id, "active")}
+                        disabled={actionLoading === g.id + "active"}
+                        className="flex-1 py-2.5 rounded-[14px] bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Aprobar
+                      </button>
+                      <button
+                        onClick={() => changeUserStatus(g.id, "denied")}
+                        disabled={actionLoading === g.id + "denied"}
+                        className="flex-1 py-2.5 rounded-[14px] bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Denegar
+                      </button>
+                    </div>
+                  )}
+
+                  {g.status === "active" && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => changeUserStatus(g.id, "blocked")}
+                        disabled={actionLoading === g.id + "blocked"}
+                        className="flex-1 py-2.5 rounded-[14px] bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Ban className="w-4 h-4" />
+                        Bloquear
+                      </button>
+                    </div>
+                  )}
+
+                  {(g.status === "denied" || g.status === "blocked") && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => changeUserStatus(g.id, "active")}
+                        disabled={actionLoading === g.id + "active"}
+                        className="flex-1 py-2.5 rounded-[14px] bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Reactivar
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Load more gestores button */}
+            {hasMoreGestores && (
+              <button
+                onClick={() => fetchMoreGestores()}
+                disabled={fetchingMoreGestores}
+                className="w-full py-3 rounded-[16px] card-filled text-sm font-semibold text-muted-foreground flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {/* Info del gestor */}
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
-                    <span className="text-white font-bold text-sm">
-                      {(g.full_name || g.username || "?")[0].toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold truncate">{g.full_name || g.username}</p>
-                      {statusBadge(g.status)}
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{g.email}</p>
-                    <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
-                      {g.phone && <span>📞 +53 {g.phone.replace(/^\+53/, "").trim()}</span>}
-                      <span>🏷️ Proyecto {g.assigned_project}</span>
-                      <span>📅 {g.join_date}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Acciones de status */}
-                {g.status === "pending" && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => changeUserStatus(g.id, "active")}
-                      disabled={actionLoading === g.id + "active"}
-                      className="flex-1 py-2.5 rounded-[14px] bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      Aprobar
-                    </button>
-                    <button
-                      onClick={() => changeUserStatus(g.id, "denied")}
-                      disabled={actionLoading === g.id + "denied"}
-                      className="flex-1 py-2.5 rounded-[14px] bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Denegar
-                    </button>
-                  </div>
+                {fetchingMoreGestores ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
                 )}
+                {fetchingMoreGestores ? "Cargando..." : `Cargar más gestores (${gestoresLoaded} cargados)`}
+              </button>
+            )}
 
-                {g.status === "active" && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => changeUserStatus(g.id, "blocked")}
-                      disabled={actionLoading === g.id + "blocked"}
-                      className="flex-1 py-2.5 rounded-[14px] bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <Ban className="w-4 h-4" />
-                      Bloquear
-                    </button>
-                  </div>
-                )}
-
-                {(g.status === "denied" || g.status === "blocked") && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => changeUserStatus(g.id, "active")}
-                      disabled={actionLoading === g.id + "active"}
-                      className="flex-1 py-2.5 rounded-[14px] bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      Reactivar
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
+            {!hasMoreGestores && gestores.length > 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">Todos los gestores cargados ({gestoresLoaded})</p>
+            )}
+          </>
         )}
       </motion.div>
 

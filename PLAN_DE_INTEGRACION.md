@@ -358,34 +358,60 @@ Eliminar re-renderizados innecesarios, memoizar componentes, reducir repaints.
 
 ---
 
-## 🟡 FASE 7: PAGINACIÓN UNIVERSAL
+## 🟡 FASE 7: PAGINACIÓN UNIVERSAL ✅
 **Prioridad**: MEDIA | **Tiempo estimado**: 1.5h | **Depende de**: Fase 2
 
 ### Objetivo
 Todas las listas usan paginación real con cursor, no `limit: 500`.
 
 ### Tareas
-- [ ] Orders (`orders/page.tsx`):
-  - `useInfiniteQuery` con cursor (`created_at` + `id`)
-  - Infinite scroll: cargar 20 más al llegar al final
-  - Indicador de carga mientras fetch
-- [ ] Admin gestores list:
-  - Paginación 20 por página
-  - Botones "Anterior" / "Siguiente"
-- [ ] Wallet entries:
-  - Paginación 15 por página
-  - Load more button
-- [ ] Chat mensajes:
-  - Cursor pagination (30 inicial)
-  - Scroll up = cargar 30 más
-- [ ] Notifications:
-  - Paginación 20 por scroll
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Crear `src/hooks/useSupabaseInfiniteQuery.ts`:
+  - Wrapper tipado de `useInfiniteQuery` con soporte para cursor pagination
+  - Expone `flatData` (array aplanado) + `totalLoaded` + `fetchNextPage` + `hasNextPage`
+  - Integrado con `useSession` para client/userId automáticos
+  - Exportado desde `src/hooks/index.ts`
+- [x] Orders (`orders/page.tsx`):
+  - `useSupabaseInfiniteQuery` con cursor `created_at` (20 por página)
+  - Infinite scroll con `IntersectionObserver` (rootMargin: 200px)
+  - Botón "Cargar más pedidos..." automático al hacer scroll
+  - Indicador "Todos los pedidos cargados (N)"
+- [x] Admin gestores list (`admin/page.tsx`):
+  - `useSupabaseInfiniteQuery` con cursor (20 por página)
+  - Botón "Cargar más gestores (N cargados)"
+  - Indicador "Todos los gestores cargados (N)"
+- [x] Wallet entries (`wallet/page.tsx`):
+  - Query separada: `wallet-summary` (useSupabaseQuery) + `wallet-entries` (infinite, 15 por página) + `wallet-payouts` (useSupabaseQuery)
+  - Botón "Cargar más (N cargados)" con ChevronDown
+  - Indicador "Todos los movimientos cargados (N)"
+  - `invalidate.wallet()` actualizado para invalidar las 3 keys nuevas
+- [x] Chat messages (`useMessages.ts`):
+  - `useSupabaseInfiniteQuery` con cursor (30 inicial)
+  - `fetchOlder` / `hasOlder` / `fetchingOlder` exportados
+  - Botón "Cargar mensajes anteriores" en la parte superior del chat
+  - Auto-detección de scroll al inicio para cargar más
+  - ChatWindow actualizado con scroll-up detection + botón manual
+  - ChatLayout actualizado para pasar los nuevos props
+- [x] Notifications (`notifications/page.tsx`):
+  - `useSupabaseInfiniteQuery` con cursor (20 por página)
+  - Infinite scroll con `IntersectionObserver`
+  - Indicador "Todas las notificaciones cargadas (N)"
+- [x] `npm run typecheck && npm run build && npm run test` — ✅ 24 tests, 0 errores
+
+### Paginación por página
+```
+Orders          → 20 por página, infinite scroll automático (IntersectionObserver)
+Admin gestores  → 20 por página, botón "Cargar más"
+Wallet entries  → 15 por página, botón "Cargar más"
+Chat mensajes   → 30 por página, scroll up + botón manual
+Notifications   → 20 por página, infinite scroll automático (IntersectionObserver)
+```
 
 ### Verificación
-- Orders: Network tab muestra queries de 20 en 20
-- Admin: no carga 500 registros de golpe
+- Orders: Network tab muestra queries de 20 en 20 al hacer scroll
+- Admin: no carga 500 registros de golpe, solo 20 + cargar más
 - Chat: scroll up carga más mensajes sin saltar
+- Wallet: botón "Cargar más" aparece si hay más de 15 movimientos
+- Notifications: scroll al final carga más notificaciones
 
 ---
 

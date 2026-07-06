@@ -9,6 +9,9 @@ export type {
 export { useSupabaseQuery, invalidate } from "./useSupabaseQuery";
 export type { UseSupabaseQueryOptions } from "./useSupabaseQuery";
 
+export { useSupabaseInfiniteQuery } from "./useSupabaseInfiniteQuery";
+export type { UseSupabaseInfiniteQueryOptions, CursorPage } from "./useSupabaseInfiniteQuery";
+
 export { useRealtime, getActiveChannelCount } from "./useRealtime";
 export type { UseRealtimeConfig } from "./useRealtime";
 

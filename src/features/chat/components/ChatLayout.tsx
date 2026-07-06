@@ -18,7 +18,7 @@ export function ChatLayout() {
 
   const { conversations, isLoading: convsLoading } = useConversations();
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
-  const { messages, isLoading: msgsLoading } = useMessages(activeConvId);
+  const { messages, isLoading: msgsLoading, fetchOlder, hasOlder, fetchingOlder } = useMessages(activeConvId);
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
@@ -230,6 +230,9 @@ export function ChatLayout() {
           isLoading={msgsLoading}
           userId={userId}
           profile={profile}
+          fetchOlder={fetchOlder}
+          hasOlder={hasOlder}
+          fetchingOlder={fetchingOlder}
         />
       )}
     </div>

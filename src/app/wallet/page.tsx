@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } from "@/hooks";
 import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
@@ -18,6 +18,7 @@ import {
   Loader2,
   AlertTriangle,
   DollarSign,
+  ChevronDown,
 } from "lucide-react";
 
 interface WalletEntry {
@@ -43,11 +44,7 @@ interface WalletSummary {
   total_payouts: number;
 }
 
-interface WalletData {
-  summary: WalletSummary;
-  entries: WalletEntry[];
-  payouts: PayoutRequest[];
-}
+const ENTRY_PAGE_SIZE = 15;
 
 export default function WalletPage() {
   return (
@@ -64,39 +61,69 @@ function WalletContent() {
   const queryClient = useQueryClient();
   const userId = user?.id ?? "";
 
-  const { data: walletData, isLoading, error: walletError } = useSupabaseQuery<WalletData>({
-    key: ["wallet", userId],
+  // ─── Query 1: Summary (single row, stays as useSupabaseQuery) ───
+  const { data: summaryData, isLoading: summaryLoading, error: walletError } = useSupabaseQuery<WalletSummary>({
+    key: ["wallet-summary", userId],
     queryFn: async (supabase, uid) => {
-      const [summaryRes, entriesRes, payoutsRes] = await Promise.all([
-        supabase
-          .from("manager_wallet_summary")
-          .select("*")
-          .eq("manager_id", uid)
-          .single(),
-        supabase
-          .from("wallet_entries")
-          .select("*")
-          .eq("manager_id", uid)
-          .order("created_at", { ascending: false })
-          .limit(30),
-        supabase
-          .from("payout_requests")
-          .select("*")
-          .eq("manager_id", uid)
-          .order("created_at", { ascending: false })
-          .limit(10),
-      ]);
-
-      const summary: WalletSummary = summaryRes.data
-        ? (summaryRes.data as WalletSummary)
+      const { data } = await supabase
+        .from("manager_wallet_summary")
+        .select("*")
+        .eq("manager_id", uid)
+        .single();
+      return data
+        ? (data as WalletSummary)
         : { balance: 0, total_commissions: 0, total_payouts: 0 };
-
-      const entries = (entriesRes.data as WalletEntry[]) || [];
-      const payouts = (payoutsRes.data as PayoutRequest[]) || [];
-
-      return { summary, entries, payouts };
     },
-    staleTime: 30_000, // 30s
+    staleTime: 30_000,
+  });
+
+  // ─── Query 2: Wallet entries (infinite pagination) ───
+  const {
+    flatData: entries,
+    totalLoaded: entriesLoaded,
+    fetchNextPage: fetchMoreEntries,
+    hasNextPage: hasMoreEntries,
+    isFetchingNextPage: fetchingMoreEntries,
+  } = useSupabaseInfiniteQuery<WalletEntry>({
+    key: ["wallet-entries", userId],
+    queryFn: async (supabase, uid, cursor) => {
+      let query = supabase
+        .from("wallet_entries")
+        .select("*")
+        .eq("manager_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(ENTRY_PAGE_SIZE + 1);
+
+      if (cursor) {
+        query = query.lt("created_at", cursor);
+      }
+
+      const { data } = await query;
+      const items = (data as WalletEntry[]) || [];
+      const hasMore = items.length > ENTRY_PAGE_SIZE;
+      const pageItems = hasMore ? items.slice(0, ENTRY_PAGE_SIZE) : items;
+      const nextCursor = hasMore && pageItems.length > 0
+        ? pageItems[pageItems.length - 1].created_at
+        : null;
+
+      return { data: pageItems, nextCursor };
+    },
+    staleTime: 30_000,
+  });
+
+  // ─── Query 3: Payouts (small list, stays as useSupabaseQuery) ───
+  const { data: payouts = [] } = useSupabaseQuery<PayoutRequest[]>({
+    key: ["wallet-payouts", userId],
+    queryFn: async (supabase, uid) => {
+      const { data } = await supabase
+        .from("payout_requests")
+        .select("*")
+        .eq("manager_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      return (data as PayoutRequest[]) || [];
+    },
+    staleTime: 30_000,
   });
 
   const [showPayoutForm, setShowPayoutForm] = useState(false);
@@ -114,7 +141,7 @@ function WalletContent() {
       return;
     }
 
-    const available = walletData?.summary.balance || 0;
+    const available = summaryData?.balance || 0;
     if (amount > available) {
       setMessage({ type: "error", text: `No puedes solicitar más de tu saldo disponible ($${available.toFixed(2)}).` });
       return;
@@ -154,11 +181,9 @@ function WalletContent() {
     }
   };
 
-  const balance = useMemo(() => walletData?.summary.balance || 0, [walletData?.summary.balance]);
-  const totalCommissions = useMemo(() => walletData?.summary.total_commissions || 0, [walletData?.summary.total_commissions]);
-  const totalPayouts = useMemo(() => walletData?.summary.total_payouts || 0, [walletData?.summary.total_payouts]);
-  const entries = useMemo(() => walletData?.entries || [], [walletData?.entries]);
-  const payouts = useMemo(() => walletData?.payouts || [], [walletData?.payouts]);
+  const balance = useMemo(() => summaryData?.balance || 0, [summaryData?.balance]);
+  const totalCommissions = useMemo(() => summaryData?.total_commissions || 0, [summaryData?.total_commissions]);
+  const totalPayouts = useMemo(() => summaryData?.total_payouts || 0, [summaryData?.total_payouts]);
 
   // Error visible en UI
   if (walletError) {
@@ -172,7 +197,7 @@ function WalletContent() {
     );
   }
 
-  if (isLoading) {
+  if (summaryLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -326,7 +351,7 @@ function WalletContent() {
         </motion.div>
       )}
 
-      {/* Historial de movimientos */}
+      {/* Historial de movimientos (paginado) */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="space-y-2">
         <h2 className="text-sm font-semibold">Movimientos recientes</h2>
         {entries.length === 0 ? (
@@ -336,30 +361,52 @@ function WalletContent() {
             <p className="text-xs text-muted-foreground mt-1">Los pedidos vendidos generarán comisiones aquí</p>
           </div>
         ) : (
-          entries.map((e) => (
-            <div key={e.id} className="card-filled rounded-[16px] p-4 flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-[12px] flex items-center justify-center shrink-0 ${
-                e.entry_type === "commission" ? "bg-green-100 dark:bg-green-500/15" :
-                e.entry_type === "payout" ? "bg-orange-100 dark:bg-orange-500/15" :
-                "bg-blue-100 dark:bg-blue-500/15"
-              }`}>
-                {e.entry_type === "commission" ? <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" /> :
-                 e.entry_type === "payout" ? <TrendingDown className="w-4 h-4 text-orange-600 dark:text-orange-400" /> :
-                 <DollarSign className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+          <>
+            {entries.map((e) => (
+              <div key={e.id} className="card-filled rounded-[16px] p-4 flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-[12px] flex items-center justify-center shrink-0 ${
+                  e.entry_type === "commission" ? "bg-green-100 dark:bg-green-500/15" :
+                  e.entry_type === "payout" ? "bg-orange-100 dark:bg-orange-500/15" :
+                  "bg-blue-100 dark:bg-blue-500/15"
+                }`}>
+                  {e.entry_type === "commission" ? <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" /> :
+                   e.entry_type === "payout" ? <TrendingDown className="w-4 h-4 text-orange-600 dark:text-orange-400" /> :
+                   <DollarSign className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold">
+                    {e.entry_type === "commission" ? "+" : "-"}${Math.abs(e.amount).toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {e.description || (e.entry_type === "commission" ? "Comisión por venta" : e.entry_type === "payout" ? "Retiro" : "Ajuste")}
+                  </p>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {new Date(e.created_at).toLocaleDateString("es-CU")}
+                </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">
-                  {e.entry_type === "commission" ? "+" : "-"}${Math.abs(e.amount).toFixed(2)}
-                </p>
-                <p className="text-[10px] text-muted-foreground truncate">
-                  {e.description || (e.entry_type === "commission" ? "Comisión por venta" : e.entry_type === "payout" ? "Retiro" : "Ajuste")}
-                </p>
-              </div>
-              <span className="text-[10px] text-muted-foreground">
-                {new Date(e.created_at).toLocaleDateString("es-CU")}
-              </span>
-            </div>
-          ))
+            ))}
+
+            {/* Load more button */}
+            {hasMoreEntries && (
+              <button
+                onClick={() => fetchMoreEntries()}
+                disabled={fetchingMoreEntries}
+                className="w-full py-3 rounded-[16px] card-filled text-sm font-semibold text-muted-foreground flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {fetchingMoreEntries ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+                {fetchingMoreEntries ? "Cargando..." : `Cargar más (${entriesLoaded} cargados)`}
+              </button>
+            )}
+
+            {!hasMoreEntries && entries.length > 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">Todos los movimientos cargados ({entriesLoaded})</p>
+            )}
+          </>
         )}
       </motion.div>
     </div>

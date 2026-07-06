@@ -114,8 +114,12 @@ export const invalidate = {
   gestorAnalytics: (qc: ReturnType<typeof useQueryClient>, userId: string) =>
     qc.invalidateQueries({ queryKey: ["gestor-analytics", userId] }),
 
-  wallet: (qc: ReturnType<typeof useQueryClient>, userId: string) =>
-    qc.invalidateQueries({ queryKey: ["wallet", userId] }),
+  wallet: (qc: ReturnType<typeof useQueryClient>, userId: string) => {
+    qc.invalidateQueries({ queryKey: ["wallet", userId] });
+    qc.invalidateQueries({ queryKey: ["wallet-summary", userId] });
+    qc.invalidateQueries({ queryKey: ["wallet-entries", userId] });
+    qc.invalidateQueries({ queryKey: ["wallet-payouts", userId] });
+  },
 
   orders: (qc: ReturnType<typeof useQueryClient>, userId: string) =>
     qc.invalidateQueries({ queryKey: ["orders", userId] }),
