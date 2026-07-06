@@ -245,6 +245,20 @@ input, textarea {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   RIPPLE EFFECT for buttons
+   ═══════════════════════════════════════════════════════════ */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
 @keyframes shimmer {
   0% { background-position: -1000px 0; }
   100% { background-position: 1000px 0; }
