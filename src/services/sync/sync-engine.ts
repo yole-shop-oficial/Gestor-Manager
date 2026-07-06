@@ -37,7 +37,7 @@ interface OfflineDBSchema {
 
 let dbInstance: IDBPDatabase<OfflineDBSchema> | null = null;
 
-async function getDB(): Promise<IDBPDatabase<OfflineDBSchema>> {
+export async function getDB(): Promise<IDBPDatabase<OfflineDBSchema>> {
   if (dbInstance) return dbInstance;
   dbInstance = await openDB<OfflineDBSchema>(DB_NAME, DB_VERSION, {
     upgrade(db) {

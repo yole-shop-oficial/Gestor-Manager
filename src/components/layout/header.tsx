@@ -2,14 +2,16 @@
 
 import React from "react";
 import Link from "next/link";
-import { Bell, Search, Sparkles } from "lucide-react";
+import { Bell, Search, Sparkles, CloudOff } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
+import { useSyncEngine } from "@/hooks/useSyncEngine";
 
 export function Header() {
   const unreadCount = useUnreadNotifications();
   const hasUnread = unreadCount > 0;
+  const { hasPending, pendingCount, syncNow, state } = useSyncEngine();
 
   return (
     <header className="sticky top-0 z-40 w-full surface-blur border-b border-border/40 shadow-card">
@@ -31,6 +33,30 @@ export function Header() {
         </motion.div>
 
         <div className="flex items-center gap-1">
+          {/* Pending sync indicator */}
+          <AnimatePresence>
+            {hasPending && (
+              <motion.button
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  if (navigator.onLine) syncNow();
+                }}
+                className="p-2.5 rounded-[14px] hover:bg-surface transition-colors relative"
+                title={`${pendingCount} operación(es) pendiente(s) de sincronizar`}
+              >
+                <CloudOff className="w-5 h-5 text-orange-500 dark:text-orange-400" />
+                <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 bg-orange-500 rounded-full flex items-center justify-center">
+                  <span className="text-[7px] font-bold text-white px-0.5">
+                    {pendingCount > 9 ? "9+" : pendingCount}
+                  </span>
+                </span>
+              </motion.button>
+            )}
+          </AnimatePresence>
+
           <motion.button
             whileTap={{ scale: 0.9 }}
             className="p-2.5 rounded-[14px] hover:bg-surface transition-colors"

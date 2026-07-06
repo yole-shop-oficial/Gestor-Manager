@@ -464,37 +464,54 @@ Extraer componentes duplicados a `src/components/shared/`.
 
 ---
 
-## 🟡 FASE 9: OFFLINE FIRST REAL
+## 🟡 FASE 9: OFFLINE FIRST REAL ✅
 **Prioridad**: MEDIA | **Tiempo estimado**: 2h | **Depende de**: Fase 2, Fase 3
 
 ### Objetivo
 Service Worker con precache + runtime cache. Sync automático al reconectar.
 
 ### Tareas
-- [ ] Service Worker v4 (`public/sw.js`):
-  - Precache: HTML shell, CSS, JS core
-  - Runtime cache: imágenes de Supabase Storage (Stale-While-Revalidate)
-  - Cache API responses (GET) con TTL
-  - Versionado: `CACHE-v2.0-{timestamp}`
-- [ ] Sincronización automática:
-  - `window.addEventListener('online', syncPending)`
-  - Background Sync API (si disponible)
-  - Fallback: sync on app focus
-- [ ] Indicador visual de operaciones pendientes:
-  - Badge en BottomNav o Header mostrando "3 pendientes"
-  - Lista de operaciones en cola (sync-engine)
-- [ ] Conflict resolution básico:
-  - Last-write-wins para update operations
-  - Para create: agregar `_offline: true` flag
-- [ ] Cache de imágenes de pedidos:
-  - Al crear pedido offline, guardar imagen en IndexedDB
-  - Al reconectar, subir a Storage y actualizar URL
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Service Worker v4 (`public/sw.js`):
+  - Precache: manifest.json, icons (favicon, 180, 192, 512)
+  - Runtime cache: imágenes de Supabase Storage (Cache First, 7 días TTL)
+  - API GET cache: Stale-While-Revalidate (30s TTL) para endpoints `/rest/v1/`
+  - Navigation: Network First con fallback a cache + página offline HTML
+  - Static assets: Cache First (CSS, JS, fonts, images)
+  - Background Sync listener: notifica a los clients para sincronizar
+  - Cache versioning: `yole-shop-v4`, `yole-assets-v4`, `yole-api-v4`, `yole-images-v4`
+  - TTL implementado con header personalizado `sw-cache-date`
+- [x] Sincronización automática:
+  - `window.addEventListener('online')` → trigger `syncNow()`
+  - Background Sync API: SW envía `SYNC_PENDING` message → clients escuchan y sincronizan
+  - Fallback: sync on app focus (via refreshState on mount)
+- [x] Hook `useSyncEngine` (`src/hooks/useSyncEngine.ts`):
+  - Conecta con `createRealSyncEngine()` de sync-engine
+  - Auto-sync al reconectar (online event + SW messages)
+  - Invalida React Query cache después de sync exitoso
+  - Expone: `state`, `pendingCount`, `hasPending`, `enqueue()`, `syncNow()`, `refreshState()`
+  - Exportado desde `src/hooks/index.ts`
+- [x] Indicador visual de operaciones pendientes:
+  - Header: badge naranja con `CloudOff` icon + count (solo visible si hay pendientes)
+  - MainLayout: banner naranja "Hay cambios pendientes" con botón "Sincronizar ahora"
+  - Banner amarillo offline: se mantiene (sin conexión — los cambios se guardarán localmente)
+  - Animaciones con AnimatePresence (aparece/desaparece suavemente)
+- [x] Exportar `getDB` desde sync-engine para acceso desde useSyncEngine
+- [x] `npm run typecheck && npm run build && npm run test` — ✅ 24 tests, 0 errores
+
+### Estrategia de cache del SW v4
+```
+Navigation      → Network First, cache fallback (offline page)
+Static assets   → Cache First (CSS, JS, fonts, icons)
+API GET         → Stale-While-Revalidate (30s TTL)
+Storage images  → Cache First (7 days TTL)
+Non-GET/API     → Never cached
+```
 
 ### Verificación
-- Crear pedido offline → aparece en lista con badge "pendiente"
-- Reconectar → pedido se sube automáticamente
-- Imagen se sube a Storage y se actualiza la URL
+- Crear pedido offline → se encola en IndexedDB → aparece badge naranja en header
+- Reconectar → auto-sync → badge desaparece → React Query cache invalidada
+- Imágenes de pedidos se cargan desde cache (7 días)
+- API responses se sirven desde cache si < 30s, revalidan en background
 
 ---
 

@@ -6,11 +6,13 @@ import { FloatingToolKit } from "@/components/floating/FloatingToolKit";
 import { PagePreloader } from "@/components/ui/PagePreloader";
 import { IOSInstallBanner } from "@/components/ui/IOSInstallBanner";
 import { useEffect, useState } from "react";
-import { WifiOff } from "lucide-react";
+import { WifiOff, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSyncEngine } from "@/hooks";
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
   const [isOffline, setIsOffline] = useState(false);
+  const { hasPending, syncNow, state } = useSyncEngine();
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -32,7 +34,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
 
-        {/* Banner offline */}
+        {/* Banner offline + pending sync */}
         <AnimatePresence>
           {isOffline && (
             <motion.div
@@ -46,6 +48,35 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                 <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">
                   Sin conexión — los cambios se guardarán localmente
                 </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Pending sync indicator (when online but has pending ops) */}
+        <AnimatePresence>
+          {!isOffline && hasPending && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-orange-500/10 border-b border-orange-500/20 overflow-hidden"
+            >
+              <div className="flex items-center justify-center gap-2 py-2 px-4">
+                <RefreshCw className={`w-3.5 h-3.5 text-orange-600 dark:text-orange-400 ${state.status === "syncing" ? "animate-spin" : ""}`} />
+                <span className="text-xs font-medium text-orange-700 dark:text-orange-300">
+                  {state.status === "syncing"
+                    ? "Sincronizando cambios..."
+                    : "Hay cambios pendientes de sincronizar"}
+                </span>
+                {state.status !== "syncing" && (
+                  <button
+                    onClick={() => syncNow()}
+                    className="text-[10px] font-bold text-orange-600 dark:text-orange-400 underline"
+                  >
+                    Sincronizar ahora
+                  </button>
+                )}
               </div>
             </motion.div>
           )}

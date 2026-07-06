@@ -1,76 +1,78 @@
 // Service Worker para YOLE SHOP APP PWA
-// v3 — FIX #8: No usar skipWaiting() agresivo que cancela peticiones en vuelo
+// v4 — Offline First: runtime cache for images, API GET cache with TTL, Background Sync
 //
 // Estrategia:
-//   Navigation = Network Only (Safari seguro)
-//   Assets    = Cache First con Network fallback
-//   API       = Network Only (nunca cachear)
-//
-// Cambios vs v2:
-//   - skipWaiting() se movió DENTRO del waitUntil (no interrumpe peticiones)
-//   - claim() solo se ejecuta si no hay controlador activo
-//   - Navegación con timeout de 5s para no bloquear indefinidamente
+//   Navigation  = Network First, cache fallback (offline pages)
+//   Assets      = Cache First (CSS, JS, fonts, icons)
+//   API GET     = Stale-While-Revalidate (30s TTL)
+//   Images      = Cache First (7 day TTL) — Supabase Storage
+//   API POST    = Never cached (always network)
 
-const CACHE_NAME = "yole-shop-v3";
-const ASSETS_CACHE = "yole-assets-v3";
+const CACHE_NAME = "yole-shop-v4";
+const ASSETS_CACHE = "yole-assets-v4";
+const API_CACHE = "yole-api-v4";
+const IMAGES_CACHE = "yole-images-v4";
 
-// Solo assets estáticos seguros para cachear
+const API_TTL = 30_000; // 30s for API GET cache
+const IMAGE_TTL = 7 * 24 * 3600_000; // 7 days for images
+
 const PRECACHE_ASSETS = [
   "/manifest.json",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/icon-180x180.png",
+  "/icons/favicon.png",
 ];
 
-// Instalar: cachear solo assets estáticos seguros
-// FIX: No llamamos skipWaiting() directamente — esperamos a que
-// el SW viejo termine de atender peticiones antes de tomar control.
+// ─── Install: precache static assets ───
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(ASSETS_CACHE)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
       .catch((err) => {
-        console.warn("[SW v3] Precache falló (no crítico):", err);
+        console.warn("[SW v4] Precache falló (no crítico):", err);
       })
   );
-  // No llamamos skipWaiting() — dejamos que el SW viejo termine
-  // Esto evita que se cancelen peticiones en vuelo (registro, login, etc.)
 });
 
-// Activar: limpiar caches viejas y tomar control
+// ─── Activate: clean old caches, take control ───
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME && key !== ASSETS_CACHE)
+          .filter((key) => key !== CACHE_NAME && key !== ASSETS_CACHE && key !== API_CACHE && key !== IMAGES_CACHE)
           .map((key) => caches.delete(key))
       )
-    ).then(() => {
-      // Solo hacer claim si no hay otro SW controlando — seguro
-      return self.clients.claim();
-    })
+    ).then(() => self.clients.claim())
   );
 });
 
-// Fetch: Estrategia diferente según tipo de request
+// ─── Fetch: route-based strategy ───
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // ─── NUNCA cachear: ───
-  // 1. Requests que no son GET
+  // Never cache non-GET requests
   if (request.method !== "GET") return;
 
-  // 2. Requests a Supabase (auth, datos, API)
-  if (url.hostname.includes("supabase") || url.hostname.includes("supabase.co")) return;
+  // ─── Supabase API GET → Stale-While-Revalidate ───
+  if (url.hostname.includes("supabase.co") && url.pathname.startsWith("/rest/v1/")) {
+    event.respondWith(staleWhileRevalidate(request, API_CACHE, API_TTL));
+    return;
+  }
 
-  // 3. Navegación (HTML pages) → Network Only para Safari
+  // ─── Supabase Storage images → Cache First (7 days) ───
+  if (url.hostname.includes("supabase.co") && url.pathname.includes("/storage/")) {
+    event.respondWith(cacheFirstWithTTL(request, IMAGES_CACHE, IMAGE_TTL));
+    return;
+  }
+
+  // ─── Navigation (HTML pages) → Network First, cache fallback ───
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache la página para offline futuro
           if (response.status === 200) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
@@ -78,7 +80,6 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => {
-          // Solo si NO hay red, intentar cache
           return caches.match(request).then((cached) => {
             return cached || caches.match("/welcome").then((fallback) => {
               return fallback || new Response(
@@ -92,7 +93,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // ─── Assets estáticos (CSS, JS, imágenes) → Cache First ───
+  // ─── Static assets → Cache First ───
   if (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
@@ -100,28 +101,15 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith(".js") ||
     url.pathname.endsWith(".png") ||
     url.pathname.endsWith(".jpg") ||
+    url.pathname.endsWith(".webp") ||
     url.pathname.endsWith(".svg") ||
     url.pathname.endsWith(".woff2")
   ) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
-          if (response.status === 200) {
-            const clone = response.clone();
-            caches.open(ASSETS_CACHE).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        }).catch((err) => {
-          console.warn("[SW v3] Asset no disponible:", url.pathname, err);
-          return new Response("", { status: 404 });
-        });
-      })
-    );
+    event.respondWith(cacheFirst(request, ASSETS_CACHE));
     return;
   }
 
-  // ─── Todo lo demás → Network First ───
+  // ─── Everything else → Network First ───
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -131,9 +119,98 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch((err) => {
-        console.warn("[SW v3] Network First fallback:", url.pathname, err);
+      .catch(() => {
         return caches.match(request).then((cached) => cached || new Response("", { status: 404 }));
       })
   );
 });
+
+// ─── Background Sync (if supported) ───
+self.addEventListener("sync", (event) => {
+  if (event.tag === "yole-sync-pending") {
+    // Notify all clients to trigger sync
+    event.waitUntil(
+      self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: "SYNC_PENDING" }));
+      })
+    );
+  }
+});
+
+// ─── Helper: Cache First ───
+async function cacheFirst(request, cacheName) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.status === 200) {
+    const clone = response.clone();
+    caches.open(cacheName).then((cache) => cache.put(request, clone));
+  }
+  return response;
+}
+
+// ─── Helper: Cache First with TTL ───
+async function cacheFirstWithTTL(request, cacheName, ttl) {
+  const cached = await caches.match(request);
+  if (cached) {
+    const dateHeader = cached.headers.get("sw-cache-date");
+    if (dateHeader) {
+      const age = Date.now() - parseInt(dateHeader, 10);
+      if (age < ttl) return cached;
+    } else {
+      return cached; // No date header, serve anyway
+    }
+  }
+  try {
+    const response = await fetch(request);
+    if (response.status === 200) {
+      const clone = response.clone();
+      const headers = new Headers(clone.headers);
+      headers.set("sw-cache-date", Date.now().toString());
+      const body = await clone.blob();
+      const newResponse = new Response(body, { status: clone.status, statusText: clone.statusText, headers });
+      caches.open(cacheName).then((cache) => cache.put(request, newResponse));
+    }
+    return response;
+  } catch (err) {
+    // Network failed, return stale cache if available
+    if (cached) return cached;
+    return new Response("", { status: 404 });
+  }
+}
+
+// ─── Helper: Stale-While-Revalidate ───
+async function staleWhileRevalidate(request, cacheName, ttl) {
+  const cached = await caches.match(request);
+  let staleData = null;
+
+  if (cached) {
+    const dateHeader = cached.headers.get("sw-cache-date");
+    if (dateHeader) {
+      const age = Date.now() - parseInt(dateHeader, 10);
+      if (age < ttl) {
+        return cached; // Fresh enough, no revalidation needed
+      }
+    }
+    staleData = cached; // Stale but usable while revalidating
+  }
+
+  // Revalidate in background
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response.status === 200) {
+        const clone = response.clone();
+        const headers = new Headers(clone.headers);
+        headers.set("sw-cache-date", Date.now().toString());
+        clone.blob().then((body) => {
+          const newResponse = new Response(body, { status: clone.status, statusText: clone.statusText, headers });
+          caches.open(cacheName).then((cache) => cache.put(request, newResponse));
+        });
+      }
+      return response;
+    })
+    .catch(() => staleData); // If fetch fails, return stale
+
+  // Return stale immediately if available, otherwise wait for fetch
+  return staleData || fetchPromise;
+}

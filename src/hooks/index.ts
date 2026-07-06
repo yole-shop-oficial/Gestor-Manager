@@ -16,3 +16,5 @@ export { useRealtime, getActiveChannelCount } from "./useRealtime";
 export type { UseRealtimeConfig } from "./useRealtime";
 
 export { useUnreadNotifications } from "./useUnreadNotifications";
+
+export { useSyncEngine } from "./useSyncEngine";
