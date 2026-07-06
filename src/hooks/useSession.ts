@@ -53,25 +53,16 @@ export interface UseSessionResult {
 }
 
 // ═══════════════════════════════════════════════════════════
-// PROFILE CACHE (module-level, survives remounts)
+// PROFILE CACHE
 // ═══════════════════════════════════════════════════════════
 
 const PROFILE_CACHE_TTL = 5 * 60 * 1000;
-
-interface ProfileCacheEntry {
-  profile: UserProfile;
-  cachedAt: number;
-}
-
-const profileCache = new Map<string, ProfileCacheEntry>();
+const profileCache = new Map<string, { profile: UserProfile; cachedAt: number }>();
 
 function getCachedProfile(userId: string): UserProfile | null {
   const entry = profileCache.get(userId);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt > PROFILE_CACHE_TTL) {
-    profileCache.delete(userId);
-    return null;
-  }
+  if (Date.now() - entry.cachedAt > PROFILE_CACHE_TTL) { profileCache.delete(userId); return null; }
   return entry.profile;
 }
 
@@ -79,9 +70,7 @@ function setCachedProfile(userId: string, profile: UserProfile): void {
   profileCache.set(userId, { profile, cachedAt: Date.now() });
 }
 
-function clearCachedProfile(userId: string): void {
-  profileCache.delete(userId);
-}
+function clearCachedProfile(userId: string): void { profileCache.delete(userId); }
 
 // ═══════════════════════════════════════════════════════════
 // SINGLETON STATE
@@ -91,28 +80,41 @@ let singletonUser: User | null = null;
 let singletonClient: SupabaseClient | null = null;
 let singletonProject: 1 | 2 | null = null;
 let singletonLoading = true;
-let authListenersRegistered = false;
-let initPromise: Promise<void> | null = null;
 
+// Notification system
 const listeners = new Set<() => void>();
+let lastNotifyTime = 0;
+const NOTIFY_THROTTLE_MS = 100;
 
 function notifyListeners() {
+  const now = Date.now();
+  if (now - lastNotifyTime < NOTIFY_THROTTLE_MS) return; // throttle
+  lastNotifyTime = now;
   listeners.forEach((fn) => fn());
 }
 
+// Init guard
+let initPromise: Promise<void> | null = null;
+let authListenersReady = false;
+
 // ═══════════════════════════════════════════════════════════
-// AUTH STATE CHANGE HANDLER (registered ONCE)
+// AUTH LISTENER: Only responds to SIGNED_IN and SIGNED_OUT
 //
-// Key design decisions:
-// 1. Dedup: Only notify if the user/project actually changed
-// 2. Skip INITIAL_SESSION if singleton already has same user
-// 3. Only clear on SIGNED_OUT from the ACTIVE project
-// 4. Never set client/project from a different project's session
+// This is the key fix. Supabase onAuthStateChange fires many events:
+// - INITIAL_SESSION: fires synchronously on registration (causes loops)
+// - TOKEN_REFRESHED: fires periodically (no user change needed)
+// - SIGNED_IN: fires on actual login (THIS is what we need)
+// - SIGNED_OUT: fires on logout (THIS is what we need)
+//
+// By filtering to ONLY SIGNED_IN and SIGNED_OUT, we avoid
+// the infinite re-render caused by INITIAL_SESSION firing
+// synchronously and triggering notifyListeners() → re-render
+// → another event → another notifyListeners() → loop.
 // ═══════════════════════════════════════════════════════════
 
 function registerAuthListeners() {
-  if (authListenersRegistered) return;
-  authListenersRegistered = true;
+  if (authListenersReady) return;
+  authListenersReady = true;
 
   for (const p of [1, 2] as const) {
     const config = getProjectConfig(p);
@@ -120,14 +122,11 @@ function registerAuthListeners() {
     const client = createLoginClient(config);
 
     client.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
+      // ═══ CRITICAL: Only handle real auth state changes ═══
+      if (event === "SIGNED_IN" && session?.user) {
         const newUserId = session.user.id;
-        // DEDUP: Skip if this is the same user on the same project
-        if (singletonUser?.id === newUserId && singletonProject === p) {
-          return; // No change — skip notification
-        }
-
-        // Update singleton with new session
+        // Dedup: skip if same user on same project
+        if (singletonUser?.id === newUserId && singletonProject === p) return;
         singletonUser = session.user;
         singletonClient = client;
         singletonProject = p;
@@ -136,7 +135,7 @@ function registerAuthListeners() {
         logger.setUser(session.user.id, p);
         notifyListeners();
       } else if (event === "SIGNED_OUT" && singletonProject === p) {
-        // Only clear if signed out from the ACTIVE project
+        // Only clear if signing out from the ACTIVE project
         singletonUser = null;
         singletonClient = null;
         singletonProject = null;
@@ -146,18 +145,16 @@ function registerAuthListeners() {
         logger.flush();
         notifyListeners();
       }
-      // All other events (INITIAL_SESSION with null, TOKEN_REFRESHED with same user)
-      // are handled by the dedup check above — no notification needed.
+      // Ignore: INITIAL_SESSION, TOKEN_REFRESHED, PASSWORD_RECOVERY, etc.
     });
   }
 }
 
 // ═══════════════════════════════════════════════════════════
-// INIT: Check for existing session (runs ONCE via promise guard)
+// INIT: Check for existing session (runs ONCE)
 // ═══════════════════════════════════════════════════════════
 
-async function initAuthSingleton() {
-  // Promise guard: prevent multiple simultaneous initializations
+function initAuthSingleton(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = doInit();
   return initPromise;
@@ -183,7 +180,6 @@ async function doInit() {
   if (savedProject) {
     result = await tryProject(savedProject);
   }
-
   if (!result) {
     for (const p of [1, 2] as const) {
       result = await tryProject(p);
@@ -195,24 +191,23 @@ async function doInit() {
     singletonUser = result.user;
     singletonClient = result.client;
     singletonProject = result.project;
-    singletonLoading = false;
     logger.setUser(result.user.id, result.project);
-    notifyListeners();
   } else {
     singletonUser = null;
     singletonClient = null;
     singletonProject = null;
-    singletonLoading = false;
-    notifyListeners();
   }
 
-  // Always register auth listeners (captures SIGNED_IN after login)
-  // The dedup inside prevents INITIAL_SESSION from causing extra renders
+  singletonLoading = false;
+  notifyListeners();
+
+  // Always register auth listeners AFTER setting initial state
+  // so that INITIAL_SESSION events are properly deduped
   registerAuthListeners();
 }
 
 // ═══════════════════════════════════════════════════════════
-// useSession HOOK
+// HOOK: useSession
 // ═══════════════════════════════════════════════════════════
 
 export function useSession(): UseSessionResult {
@@ -221,17 +216,11 @@ export function useSession(): UseSessionResult {
   const [profileLoading, setProfileLoading] = useState(true);
   const profileFetchRef = useRef<string | false>(false);
 
-  // Subscribe to singleton changes
   useEffect(() => {
     const update = () => forceUpdate((n) => n + 1);
     listeners.add(update);
-
-    // Init on first mount (promise guard prevents duplicates)
     initAuthSingleton();
-
-    return () => {
-      listeners.delete(update);
-    };
+    return () => { listeners.delete(update); };
   }, []);
 
   // Fetch profile when user becomes available
@@ -274,26 +263,17 @@ export function useSession(): UseSessionResult {
         setProfileLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [singletonUser?.id, singletonClient]);
 
   const refreshProfile = useCallback(async () => {
     const userId = singletonUser?.id;
     const client = singletonClient;
     if (!userId || !client) return;
-
     clearCachedProfile(userId);
     setProfileLoading(true);
-
     try {
-      const { data, error } = await client
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
-
+      const { data, error } = await client.from("profiles").select("*").eq("id", userId).single();
       if (error) {
         console.error("[useSession] Error refrescando perfil:", error.message);
       } else if (data) {

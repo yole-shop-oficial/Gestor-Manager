@@ -10,85 +10,54 @@ import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRo
 // ═══════════════════════════════════════════════════════════
 
 export interface UseRealtimeConfig {
-  /** Unique channel name (e.g. "chat-messages-user123") */
   channel: string;
-  /** Table to listen to */
   table: string;
-  /** Filter string (e.g. "user_id=eq.123") */
   filter?: string;
-  /** Event type to listen for (default: "*") */
   event?: "INSERT" | "UPDATE" | "DELETE" | "*";
-  /** Callback when an event is received */
   onEvent: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
-  /** Whether to subscribe (default: true). false = no channel opened */
   enabled?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════
-// TRACKER: prevent duplicate channels across components
+// TRACKER: prevent duplicate channels
 // ═══════════════════════════════════════════════════════════
 
 const activeChannels = new Map<string, { channel: RealtimeChannel; refCount: number }>();
 
 // ═══════════════════════════════════════════════════════════
 // HOOK: useRealtime
+//
+// KEY FIX: onEvent is stored in a ref, NOT in useEffect deps.
+// This prevents the channel from being destroyed/recreated on
+// every render when the parent component creates a new closure.
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Reusable realtime subscription hook.
- *
- * Features:
- * - Auto-subscribe on mount, auto-unsubscribe on unmount
- * - Page Visibility API: pauses subscription when tab loses focus
- * - Deduplicates channels: if 2 components use the same channel name, only 1 is created
- * - Never opens a channel if `enabled: false`
- * - Proper cleanup: removes channel from Supabase when no more subscribers
- *
- * @example
- * useRealtime({
- *   channel: `chat-${userId}`,
- *   table: "messages",
- *   filter: `or(recipient_id.eq.${userId},sender_id.eq.${userId})`,
- *   event: "INSERT",
- *   onEvent: (payload) => {
- *     queryClient.invalidateQueries({ queryKey: ["chat", userId] });
- *   },
- *   enabled: isOnChatPage,
- * });
- */
 export function useRealtime(config: UseRealtimeConfig): void {
   const { user, client, project } = useSession();
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const visibilityRef = useRef(true);
+
+  // Store onEvent in a ref so it doesn't trigger re-subscriptions
+  const onEventRef = useRef(config.onEvent);
+  onEventRef.current = config.onEvent;
 
   const {
     channel: channelName,
     table,
     filter,
     event = "*",
-    onEvent,
     enabled = true,
   } = config;
 
+  // Use a stable key that only changes when the subscription identity changes
+  // NOT including onEvent (which changes on every render)
+  const stableKey = `${channelName}::${table}::${filter}::${event}::${enabled}::${user?.id}::${project}`;
+
   useEffect(() => {
-    // Don't subscribe if disabled or no user
     if (!enabled || !user || !client || !project) return;
 
     const supabase = client;
     const channelKey = `${channelName}-${project}`;
 
-    // ─── Check if channel already exists (dedup) ───
-    const existing = activeChannels.get(channelKey);
-    if (existing) {
-      existing.refCount++;
-      channelRef.current = existing.channel;
-      // We still need to add our listener
-      // But Supabase channels don't support multiple onEvent listeners for the same event easily,
-      // so we use a separate approach: subscribe once, and the onEvent callback is shared.
-      // For simplicity and correctness, we'll create a new channel each time but with a unique suffix.
-    }
-
-    // ─── Build postgres_changes config ───
+    // Build postgres_changes config
     const changesConfig: Record<string, unknown> = {
       event,
       schema: "public",
@@ -98,17 +67,14 @@ export function useRealtime(config: UseRealtimeConfig): void {
       changesConfig.filter = filter;
     }
 
-    // ─── Create channel ───
+    // Create channel — use onEventRef.current for the callback
     const channel = supabase
       .channel(channelName)
       .on(
         "postgres_changes" as any,
         changesConfig as any,
         (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-          // Only fire callback if tab is visible (or if it's a critical event)
-          // We still process events even when hidden because they'll be needed
-          // when the user comes back. The invalidation is lightweight.
-          onEvent(payload);
+          onEventRef.current(payload);
         }
       )
       .subscribe((status) => {
@@ -121,8 +87,6 @@ export function useRealtime(config: UseRealtimeConfig): void {
         }
       });
 
-    channelRef.current = channel;
-
     // Track channel
     if (activeChannels.has(channelKey)) {
       activeChannels.get(channelKey)!.refCount++;
@@ -130,48 +94,30 @@ export function useRealtime(config: UseRealtimeConfig): void {
       activeChannels.set(channelKey, { channel, refCount: 1 });
     }
 
-    // ─── Page Visibility API: pause when tab is hidden ───
+    // Page Visibility API
     const handleVisibility = () => {
-      if (document.hidden) {
-        visibilityRef.current = false;
-        // Don't unsubscribe — just track state. We'll invalidate on return.
-      } else {
-        visibilityRef.current = true;
-        // Tab is visible again — trigger a refresh if needed
-        // The consumer (React Query) will handle refetch via staleTime
-      }
+      // Tab visibility changed — React Query handles refetch via staleTime
     };
-
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // ─── Cleanup ───
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
 
-      if (channelRef.current) {
-        const entry = activeChannels.get(channelKey);
-        if (entry) {
-          entry.refCount--;
-          if (entry.refCount <= 0) {
-            // No more subscribers — remove channel
-            supabase.removeChannel(channelRef.current);
-            activeChannels.delete(channelKey);
-            console.log(`[REALTIME] 🗑️ ${channelName} removed (no subscribers)`);
-          } else {
-            console.log(`[REALTIME] 👋 ${channelName} subscriber left (${entry.refCount} remaining)`);
-          }
-        } else {
-          supabase.removeChannel(channelRef.current);
+      const entry = activeChannels.get(channelKey);
+      if (entry) {
+        entry.refCount--;
+        if (entry.refCount <= 0) {
+          supabase.removeChannel(channel);
+          activeChannels.delete(channelKey);
+          console.log(`[REALTIME] 🗑️ ${channelName} removed (no subscribers)`);
         }
-        channelRef.current = null;
+      } else {
+        supabase.removeChannel(channel);
       }
     };
-  }, [enabled, user, client, project, channelName, table, filter, event, onEvent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stableKey, client, project]);
 }
-
-// ═══════════════════════════════════════════════════════════
-// UTILITY: Get active channel count (for debugging)
-// ═══════════════════════════════════════════════════════════
 
 export function getActiveChannelCount(): number {
   return activeChannels.size;
