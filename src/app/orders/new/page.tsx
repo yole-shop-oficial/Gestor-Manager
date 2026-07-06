@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { logger } from "@/lib/logger";
 import {
   ArrowLeft, Package, DollarSign, User, Phone, MapPin,
   Truck, Clock, FileText, Loader2, CheckCircle2,
@@ -136,6 +137,7 @@ function NewOrderContent() {
 
       if (insertError) {
         setError("Error al crear pedido: " + insertError.message);
+        logger.error("order_create_failed", { error: insertError.message });
         return;
       }
 
@@ -149,7 +151,7 @@ function NewOrderContent() {
             .from("order-images")
             .upload(fileName, img.file, { contentType: "image/webp", upsert: false });
           if (uploadError) {
-            console.error("[ORDER] Error subiendo imagen:", uploadError.message);
+            logger.error("order_image_upload_failed", { orderId: orderData[0].id, error: uploadError.message });
             continue;
           }
           await supabase.from("order_images").insert([{

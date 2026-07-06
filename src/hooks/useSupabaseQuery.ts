@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
 import { useSession } from "./useSession";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { logger } from "@/lib/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ═══════════════════════════════════════════════════════════
@@ -76,7 +77,16 @@ export function useSupabaseQuery<T>(
       if (!resolvedClient || !userId) {
         throw new Error("No hay sesión activa");
       }
-      return options.queryFn(resolvedClient, userId);
+      try {
+        return await options.queryFn(resolvedClient, userId);
+      } catch (err: any) {
+        // Log query errors to monitoring
+        logger.error("query_failed", {
+          key: options.key.join("/"),
+          error: err?.message || String(err),
+        });
+        throw err;
+      }
     },
     enabled: isReady && (options.enabled !== false),
     staleTime: options.staleTime,

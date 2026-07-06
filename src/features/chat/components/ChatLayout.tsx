@@ -8,6 +8,7 @@ import { useConversations } from "../hooks/useConversations";
 import { useMessages } from "../hooks/useMessages";
 import { checkSpam, recordMessage } from "../anti-spam";
 import { sanitizeMessage, containsDangerousContent } from "@/lib/sanitize";
+import { logger } from "@/lib/logger";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatWindow } from "./ChatWindow";
 import type { ChatMessage } from "../types";
@@ -157,14 +158,14 @@ export function ChatLayout() {
         .insert([insertData]);
 
       if (error) {
-        console.error("[CHAT] Error sending:", error.message);
+        logger.error("chat_send_failed", { conversationId, error: error.message });
         setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
       } else {
         recordMessage(userId, sanitizedBody);
         setOptimisticMessages([]);
       }
-    } catch (err) {
-      console.error("[CHAT] Exception:", err);
+    } catch (err: any) {
+      logger.error("chat_send_exception", { conversationId, error: err?.message || String(err) });
       setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
     } finally {
       setSending(false);

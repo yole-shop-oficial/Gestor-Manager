@@ -9,6 +9,7 @@ import {
   type PendingOperation,
   type SyncEngineState,
 } from "@/services/sync/sync-engine";
+import { logger } from "@/lib/logger";
 import { useSession } from "./useSession";
 import { invalidate } from "./useSupabaseQuery";
 import { getDB } from "@/services/sync/sync-engine";
@@ -49,8 +50,8 @@ export function useSyncEngine() {
         refreshState();
         // Invalidate all queries after sync
         queryClient.invalidateQueries();
-      } catch (err) {
-        console.error("[SYNC] Auto-sync failed:", err);
+      } catch (err: any) {
+        logger.error("sync_auto_failed", { error: err?.message || String(err) });
       }
     };
 
@@ -61,8 +62,8 @@ export function useSyncEngine() {
           await engineRef.current.syncNow();
           refreshState();
           queryClient.invalidateQueries();
-        } catch (err) {
-          console.error("[SYNC] SW-triggered sync failed:", err);
+        } catch (err: any) {
+          logger.error("sync_sw_failed", { error: err?.message || String(err) });
         }
       }
     };

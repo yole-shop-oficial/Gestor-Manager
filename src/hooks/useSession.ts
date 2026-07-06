@@ -9,6 +9,7 @@ import {
   getProjectConfig,
   createLoginClient,
 } from "@/services/supabase/roundRobin";
+import { logger } from "@/lib/logger";
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -143,6 +144,10 @@ async function initAuthSingleton() {
     singletonClient = result.client;
     singletonProject = result.project;
     singletonLoading = false;
+
+    // Connect logger to user context
+    logger.setUser(result.user.id, result.project);
+
     notifyListeners();
 
     // Listen for auth changes
@@ -152,6 +157,8 @@ async function initAuthSingleton() {
         singletonClient = null;
         singletonProject = null;
         profileCache.clear();
+        logger.setUser(null, null);
+        logger.flush(); // final flush before logout
       }
       notifyListeners();
     });

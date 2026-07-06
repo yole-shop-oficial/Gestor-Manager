@@ -8,6 +8,7 @@ import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { StatusBadge, LoadingSpinner, ErrorPanel } from "@/components/shared";
+import { logger } from "@/lib/logger";
 import {
   Users,
   ShoppingCart,
@@ -30,6 +31,17 @@ import dynamic from "next/dynamic";
 
 const AdminAnalytics = dynamic(
   () => import("@/components/dashboard/AdminAnalytics").then((m) => ({ default: m.AdminAnalytics })),
+  {
+    loading: () => (
+      <div className="flex justify-center py-8">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    ),
+  }
+);
+
+const MonitoringDashboard = dynamic(
+  () => import("@/components/monitoring/MonitoringDashboard").then((m) => ({ default: m.MonitoringDashboard })),
   {
     loading: () => (
       <div className="flex justify-center py-8">
@@ -188,6 +200,7 @@ function AdminContent() {
 
       if (error) {
         alert("Error: " + error.message);
+        logger.error("admin_change_user_status_failed", { targetUserId, newStatus, error: error.message });
       } else {
         // Crear notificación para el usuario
         if (newStatus === "active") {
@@ -243,6 +256,7 @@ function AdminContent() {
 
       if (error) {
         alert("Error: " + error.message);
+        logger.error("admin_change_payout_status_failed", { payoutId, newStatus, error: error.message });
       } else {
         if (newStatus === "approved") {
           await supabase.from("wallet_entries").insert([{
@@ -528,6 +542,11 @@ function AdminContent() {
       {/* Analytics */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <AdminAnalytics />
+      </motion.div>
+
+      {/* Monitoring & Analytics */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+        <MonitoringDashboard />
       </motion.div>
     </div>
   );

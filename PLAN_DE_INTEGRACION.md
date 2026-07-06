@@ -559,18 +559,18 @@ Cierre de brechas de seguridad identificadas en la auditoría.
 
 ---
 
-## 🟢 FASE 11: MONITOREO Y ANALYTICS
+## 🟢 FASE 11: MONITOREO Y ANALYTICS ✅
 **Prioridad**: BAJA | **Tiempo estimado**: 1h | **Depende de**: Fase 2
 
 ### Objetivo
 Logger centralizado, dashboard de errores para admin, métricas de uso.
 
 ### Tareas
-- [ ] Crear tabla `app_logs` en SQL (ambos proyectos):
+- [x] Crear tabla `app_logs` en SQL (ambos proyectos):
   ```sql
   CREATE TABLE app_logs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid REFERENCES profiles(id),
+    user_id uuid REFERENCES profiles(id) ON DELETE SET NULL,
     level text NOT NULL CHECK (level IN ('info', 'warn', 'error')),
     event text NOT NULL,
     data jsonb,
@@ -581,24 +581,57 @@ Logger centralizado, dashboard de errores para admin, métricas de uso.
   CREATE POLICY "Admin can read logs" ON app_logs FOR SELECT TO authenticated
     USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
   ```
-- [ ] Ampliar `src/lib/logger.ts`:
-  - Buffer de 20 entries
-  - Flush a `app_logs` cada 30s o cuando buffer se llena
+- [x] Índices en app_logs: `idx_app_logs_level_created` (level, created_at DESC), `idx_app_logs_user_created` (user_id, created_at DESC)
+- [x] Política INSERT para usuarios autenticados: `Authenticated users can insert logs`
+- [x] Función SQL `get_usage_metrics()` en ambos proyectos:
+  - SECURITY DEFINER + STABLE
+  - Returns: dau, active_users, orders_today, messages_today, errors_today, errors_week
+  - GRANT to authenticated, anon
+- [x] Función SQL `cleanup_old_logs()` en ambos proyectos:
+  - Elimina logs > 30 días, SECURITY DEFINER
+  - GRANT to authenticated
+- [x] Ampliar `src/lib/logger.ts`:
+  - Buffer de 20 entries para flush a Supabase
+  - Flush automático cada 30s o cuando buffer se llena
   - Solo enviar `warn` y `error` en producción
-- [ ] Dashboard de errores en admin (`admin/page.tsx`):
-  - Tab de "Errores" mostrando últimos 50 logs
-  - Filtro por nivel (error, warn)
-  - Contador de errores hoy / esta semana
-- [ ] Métricas de uso:
-  - DAU (Daily Active Users) — query a profiles con `last_sign_in_at`
-  - Pedidos/día — query a orders con `created_at > today`
-  - Mensajes/día — query a messages
-- [ ] `npm run typecheck && npm run build && npm run test`
+  - Buffer local de 200 entries para debugging (ring buffer)
+  - `setUser()` conectado desde useSession
+  - `flush()`, `destroy()` para ciclo de vida
+- [x] Crear `src/hooks/useMonitoring.ts`:
+  - `useUsageMetrics(enabled)` — query con staleTime 60s
+  - `useAppLogs(enabled, levelFilter)` — infinite query 50/page con filtro de nivel
+  - `invalidateMonitoring.metrics()` y `invalidateMonitoring.logs()`
+  - Exportado desde `src/hooks/index.ts`
+- [x] Dashboard de monitoreo en admin (`src/components/monitoring/MonitoringDashboard.tsx`):
+  - Tabs: Métricas / Errores
+  - Métricas: DAU, usuarios activos, pedidos hoy, mensajes hoy, errores hoy/semana
+  - Errores: lista paginada con filtro (all/error/warn)
+  - LogRow expandible con data, user_agent, user_id
+  - Botón de limpiar logs antiguos (>30 días)
+  - Botón de refrescar
+  - Dynamic import en admin page
+- [x] Integración del logger en puntos clave:
+  - `useSupabaseQuery` — captura errores de query automáticamente
+  - `useSession` — conecta user context al logger (setUser/flush)
+  - `admin/page.tsx` — log de errores en mutations
+  - `orders/new/page.tsx` — log de errores al crear pedido y subir imágenes
+  - `chat/ChatLayout.tsx` — log de errores al enviar mensajes
+  - `useSyncEngine.ts` — log de errores de sync
+- [x] 10 tests del logger (49 total)
+- [x] `npm run typecheck && npm run build && npm run test` — ✅ 49 tests, 0 errores
+
+### Estructura de archivos nuevos
+```
+src/hooks/useMonitoring.ts          — Hooks de métricas y logs
+src/components/monitoring/MonitoringDashboard.tsx — Dashboard de monitoreo
+src/__tests__/logger.test.ts        — 10 tests del logger
+```
 
 ### Verificación
 - Un error en la app → aparece en tabla `app_logs`
-- Admin puede ver errores en su dashboard
-- Health endpoint muestra métricas actualizadas
+- Admin puede ver errores en su dashboard (tab "Errores")
+- Métricas de uso: DAU, pedidos/día, mensajes/día visibles en tab "Métricas"
+- Logger flush automático cada 30s o al llenarse buffer
 
 ---
 
