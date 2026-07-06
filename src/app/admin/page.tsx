@@ -23,6 +23,7 @@ import {
   Eye,
 } from "lucide-react";
 import Link from "next/link";
+import { AdminAnalytics } from "@/components/dashboard/AdminAnalytics";
 
 interface GestorRow {
   id: string;
@@ -230,32 +231,16 @@ function AdminContent() {
       if (error) {
         alert("Error: " + error.message);
       } else {
-        // Si se aprueba, registrar movimiento en wallet
+        // Las notificaciones las maneja el trigger SQL automáticamente
+        // Solo registrar movimiento en wallet si se aprueba
         if (newStatus === "approved") {
           await supabase.from("wallet_entries").insert([{
             manager_id: managerId,
             amount: -amount,
-            entry_type: "payout",
+            entry_type: "payout" as any,
             description: `Retiro aprobado #${payoutId.slice(0, 8)}`,
           }]);
         }
-
-        // Notificar al gestor
-        const title = newStatus === "approved" ? "Retiro aprobado" :
-                      newStatus === "paid" ? "Retiro pagado" :
-                      "Retiro rechazado";
-        const body = newStatus === "approved"
-          ? `Tu solicitud de retiro por $${amount.toFixed(2)} ha sido aprobada.`
-          : newStatus === "paid"
-          ? `Tu retiro por $${amount.toFixed(2)} ha sido pagado.`
-          : `Tu solicitud de retiro por $${amount.toFixed(2)} ha sido rechazada.`;
-
-        await supabase.from("notifications").insert([{
-          user_id: managerId,
-          title,
-          body,
-        }]);
-
         await loadAdminData();
       }
     } catch (err) {
@@ -504,6 +489,11 @@ function AdminContent() {
             ))}
           </div>
         )}
+      </motion.div>
+
+      {/* Analytics */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+        <AdminAnalytics />
       </motion.div>
     </div>
   );

@@ -6,6 +6,7 @@ import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSupabaseUser } from "@/features/auth/hooks/useSupabaseUser";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
   Clock,
@@ -141,6 +142,7 @@ function FilterChip({ active, onClick, label }: { active: boolean; onClick: () =
 }
 
 function OrderCard({ order, index }: { order: Order; index: number }) {
+  const router = useRouter();
   const config = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
   const StatusIcon = config.icon;
   const date = new Date(order.created_at);
@@ -148,7 +150,14 @@ function OrderCard({ order, index }: { order: Order; index: number }) {
   const profit = order.sale_price - order.base_price;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ delay: index * 0.03 }} className="rounded-[20px] card-filled p-4 space-y-3">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -12 }}
+      transition={{ delay: index * 0.03 }}
+      onClick={() => router.push(`/orders/${order.id}`)}
+      className="rounded-[20px] card-filled p-4 space-y-3 cursor-pointer active:scale-[0.98] transition-transform"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-bold truncate">{order.product_name}</h4>

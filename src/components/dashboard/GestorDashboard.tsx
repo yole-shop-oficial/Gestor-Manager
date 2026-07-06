@@ -15,6 +15,7 @@ import {
   Plus,
 } from "lucide-react";
 import Link from "next/link";
+import { GestorAnalytics } from "./GestorAnalytics";
 
 interface DashboardStats {
   totalOrders: number;
@@ -144,6 +145,9 @@ export function GestorDashboard() {
         <QuickAction icon={ShoppingCart} label="Ver mis pedidos" desc={`${stats.totalOrders} pedidos registrados`} href="/orders" gradient="from-blue-500 to-cyan-500" />
         <QuickAction icon={Wallet} label="Mi billetera" desc={`Saldo: $${stats.balance.toFixed(2)}`} href="/wallet" gradient="from-violet-500 to-purple-500" />
       </motion.div>
+
+      {/* Analytics del gestor */}
+      <GestorAnalytics />
     </div>
   );
 }
