@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import {
   Wrench,
   X,
@@ -28,11 +28,17 @@ interface ToolItem {
 
 export function FloatingToolKit() {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ x: 16, y: 16 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
   const [toolResults, setToolResults] = useState<Record<string, string>>({});
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // useMotionValue avoids re-renders during drag — only updates visual position
+  const posX = useMotionValue(16);
+  const posY = useMotionValue(16);
+
+  // Track if a real drag happened (vs simple click) using ref to avoid re-renders
+  const didDrag = useRef(false);
 
   // ─── Herramientas ───
 
@@ -204,20 +210,21 @@ export function FloatingToolKit() {
     },
   ];
 
-  // ─── Drag ───
+  // ─── Drag (optimized with useMotionValue — no re-renders on pointermove) ───
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (open) return;
       setDragging(true);
+      didDrag.current = false;
       dragStart.current = {
         x: e.clientX,
         y: e.clientY,
-        px: pos.x,
-        py: pos.y,
+        px: posX.get(),
+        py: posY.get(),
       };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [open, pos]
+    [open, posX, posY]
   );
 
   const handlePointerMove = useCallback(
@@ -225,11 +232,19 @@ export function FloatingToolKit() {
       if (!dragging) return;
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
+
+      // Mark as real drag if moved more than 3px
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        didDrag.current = true;
+      }
+
       const newX = Math.max(8, Math.min(window.innerWidth - 60, dragStart.current.px + dx));
       const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.py - dy));
-      setPos({ x: newX, y: newY });
+      // Directly set motion values — NO re-render!
+      posX.set(newX);
+      posY.set(newY);
     },
-    [dragging]
+    [dragging, posX, posY]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -324,11 +339,11 @@ export function FloatingToolKit() {
         )}
       </AnimatePresence>
 
-      {/* Botón flotante arrastrable */}
-      <div
+      {/* Botón flotante arrastrable — position via useMotionValue (no re-renders) */}
+      <motion.div
         ref={containerRef}
         className="fixed z-[80]"
-        style={{ bottom: pos.y, right: pos.x }}
+        style={{ bottom: posY, right: posX }}
       >
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -336,7 +351,8 @@ export function FloatingToolKit() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onClick={() => {
-            if (!dragging) setOpen(!open);
+            // Only toggle if it wasn't a drag gesture
+            if (!didDrag.current) setOpen(!open);
           }}
           className={`w-14 h-14 rounded-[20px] bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-500 shadow-2xl flex items-center justify-center touch-none ${
             open ? "rotate-45" : ""
@@ -348,7 +364,7 @@ export function FloatingToolKit() {
             <Activity className="w-6 h-6 text-white" />
           )}
         </motion.button>
-      </div>
+      </motion.div>
     </>
   );
 }

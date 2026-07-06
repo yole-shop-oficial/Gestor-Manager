@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useSupabaseQuery } from "@/hooks";
+import React, { useMemo } from "react";
 import {
   TrendingUp, Users, ShoppingCart, DollarSign, Loader2,
 } from "lucide-react";
@@ -95,22 +96,7 @@ export function AdminAnalytics() {
       <div className="card-filled rounded-[24px] p-5">
         <h3 className="text-sm font-bold mb-4">Pedidos por estado</h3>
         <div className="space-y-2">
-          {data.ordersByStatus.map((item, i) => {
-            const total = data.ordersByStatus.reduce((s, x) => s + x.value, 0);
-            const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
-            const colors = ["bg-yellow-500", "bg-blue-500", "bg-green-500", "bg-red-500", "bg-gray-500"];
-            return (
-              <div key={item.name} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-medium">{item.name}</span>
-                  <span className="text-muted-foreground">{item.value} ({pct}%)</span>
-                </div>
-                <div className="w-full h-2 rounded-full bg-accent overflow-hidden">
-                  <div className={`h-full rounded-full ${colors[i % colors.length]}`} style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            );
-          })}
+          <StatusBars items={data.ordersByStatus} />
         </div>
       </div>
 
@@ -135,7 +121,7 @@ export function AdminAnalytics() {
   );
 }
 
-function KPI({ icon: Icon, label, value, gradient }: {
+const KPI = React.memo(function KPI({ icon: Icon, label, value, gradient }: {
   icon: React.ElementType; label: string; value: number | string; gradient: string;
 }) {
   return (
@@ -147,4 +133,28 @@ function KPI({ icon: Icon, label, value, gradient }: {
       <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
     </div>
   );
-}
+});
+
+const STATUS_BAR_COLORS = ["bg-yellow-500", "bg-blue-500", "bg-green-500", "bg-red-500", "bg-gray-500"];
+
+const StatusBars = React.memo(function StatusBars({ items }: { items: { name: string; value: number }[] }) {
+  const total = useMemo(() => items.reduce((s, x) => s + x.value, 0), [items]);
+  return (
+    <>
+      {items.map((item, i) => {
+        const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
+        return (
+          <div key={item.name} className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="font-medium">{item.name}</span>
+              <span className="text-muted-foreground">{item.value} ({pct}%)</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-accent overflow-hidden">
+              <div className={`h-full rounded-full ${STATUS_BAR_COLORS[i % STATUS_BAR_COLORS.length]}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+});

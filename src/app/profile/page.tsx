@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession } from "@/hooks";
 import { clearUserProject } from "@/services/supabase/roundRobin";
-import { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   User,
@@ -69,26 +69,35 @@ function ProfileContent() {
     }
   };
 
-  const statusColor = profile?.status === "active"
-    ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-    : profile?.status === "pending"
-    ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-    : profile?.status === "denied"
-    ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-    : profile?.status === "blocked"
-    ? "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400"
-    : "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
+  const statusColor = useMemo(() =>
+    profile?.status === "active"
+      ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+      : profile?.status === "pending"
+      ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+      : profile?.status === "denied"
+      ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+      : profile?.status === "blocked"
+      ? "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400"
+      : "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400",
+    [profile?.status]
+  );
 
-  const statusLabel = profile?.status === "active" ? "Activa"
-    : profile?.status === "pending" ? "Pendiente"
-    : profile?.status === "denied" ? "Denegada"
-    : profile?.status === "blocked" ? "Bloqueada"
-    : "Desconocido";
+  const statusLabel = useMemo(() =>
+    profile?.status === "active" ? "Activa"
+      : profile?.status === "pending" ? "Pendiente"
+      : profile?.status === "denied" ? "Denegada"
+      : profile?.status === "blocked" ? "Bloqueada"
+      : "Desconocido",
+    [profile?.status]
+  );
 
-  const genderLabel = profile?.gender === "male" ? "Masculino"
-    : profile?.gender === "female" ? "Femenino"
-    : profile?.gender === "other" ? "Otro"
-    : "—";
+  const genderLabel = useMemo(() =>
+    profile?.gender === "male" ? "Masculino"
+      : profile?.gender === "female" ? "Femenino"
+      : profile?.gender === "other" ? "Otro"
+      : "—",
+    [profile?.gender]
+  );
 
   return (
     <div className="p-6 pb-24 space-y-4">
@@ -201,7 +210,7 @@ function ProfileContent() {
   );
 }
 
-function ProfileRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+const ProfileRow = React.memo(function ProfileRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
     <div className="flex items-center gap-3">
       <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -209,4 +218,4 @@ function ProfileRow({ icon: Icon, label, value }: { icon: React.ElementType; lab
       <span className="text-sm font-medium truncate">{value}</span>
     </div>
   );
-}
+});

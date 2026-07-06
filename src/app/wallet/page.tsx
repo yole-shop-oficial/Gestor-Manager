@@ -4,7 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
@@ -154,11 +154,11 @@ function WalletContent() {
     }
   };
 
-  const balance = walletData?.summary.balance || 0;
-  const totalCommissions = walletData?.summary.total_commissions || 0;
-  const totalPayouts = walletData?.summary.total_payouts || 0;
-  const entries = walletData?.entries || [];
-  const payouts = walletData?.payouts || [];
+  const balance = useMemo(() => walletData?.summary.balance || 0, [walletData?.summary.balance]);
+  const totalCommissions = useMemo(() => walletData?.summary.total_commissions || 0, [walletData?.summary.total_commissions]);
+  const totalPayouts = useMemo(() => walletData?.summary.total_payouts || 0, [walletData?.summary.total_payouts]);
+  const entries = useMemo(() => walletData?.entries || [], [walletData?.entries]);
+  const payouts = useMemo(() => walletData?.payouts || [], [walletData?.payouts]);
 
   // Error visible en UI
   if (walletError) {

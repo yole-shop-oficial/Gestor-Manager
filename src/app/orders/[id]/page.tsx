@@ -4,7 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
-import { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
@@ -161,8 +161,8 @@ function OrderDetailContent() {
     );
   }
 
-  const statusConfig = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
-  const commission = order.sale_price - order.base_price - order.delivery_price;
+  const statusConfig = useMemo(() => STATUS_CONFIG[order.status] || STATUS_CONFIG.pending, [order?.status]);
+  const commission = useMemo(() => order ? order.sale_price - order.base_price - order.delivery_price : 0, [order?.sale_price, order?.base_price, order?.delivery_price]);
 
   return (
     <div className="p-6 pb-24 space-y-4">
@@ -266,11 +266,11 @@ function OrderDetailContent() {
   );
 }
 
-function DetailRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+const DetailRow = React.memo(function DetailRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex justify-between items-center">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className={`text-sm font-semibold text-right max-w-[60%] truncate ${highlight ? "text-green-600 dark:text-green-400" : ""}`}>{value}</span>
     </div>
   );
-}
+});

@@ -4,7 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import {
@@ -278,7 +278,7 @@ function AdminContent() {
     );
   }
 
-  const statusBadge = (status: string) => {
+  const statusBadge = useCallback((status: string) => {
     const map: Record<string, { label: string; className: string }> = {
       pending: { label: "Pendiente", className: "badge-yellow bg-yellow-100 text-yellow-700 dark:bg-transparent" },
       active: { label: "Activa", className: "badge-green bg-green-100 text-green-700 dark:bg-transparent" },
@@ -287,7 +287,7 @@ function AdminContent() {
     };
     const s = map[status] || map.pending;
     return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.className}`}>{s.label}</span>;
-  };
+  }, []);
 
   return (
     <div className="p-6 pb-24 space-y-5">
@@ -503,7 +503,7 @@ function AdminContent() {
   );
 }
 
-function AdminStat({ icon: Icon, label, value, gradient, urgent, loading }: {
+const AdminStat = React.memo(function AdminStat({ icon: Icon, label, value, gradient, urgent, loading }: {
   icon: React.ElementType;
   label: string;
   value: number;
@@ -524,4 +524,4 @@ function AdminStat({ icon: Icon, label, value, gradient, urgent, loading }: {
       <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
     </div>
   );
-}
+});

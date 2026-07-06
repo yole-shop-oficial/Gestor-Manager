@@ -4,7 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery } from "@/hooks";
-import { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
@@ -71,12 +71,18 @@ function OrdersContent() {
     staleTime: 120_000, // 2 min
   });
 
-  const filteredOrders = statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter);
+  const filteredOrders = useMemo(
+    () => statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter),
+    [orders, statusFilter]
+  );
 
-  const statusCounts = orders.reduce((acc, o) => {
-    acc[o.status] = (acc[o.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const statusCounts = useMemo(
+    () => orders.reduce((acc, o) => {
+      acc[o.status] = (acc[o.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+    [orders]
+  );
 
   // Error visible en UI
   if (ordersError) {
@@ -127,20 +133,22 @@ function OrdersContent() {
   );
 }
 
-function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+const FilterChip = React.memo(function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
     <button type="button" onClick={onClick} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${active ? "bg-indigo-600 text-white" : "bg-accent text-muted-foreground"}`}>
       {label}
     </button>
   );
-}
+});
 
-function OrderCard({ order, index }: { order: Order; index: number }) {
+const OrderCard = React.memo(function OrderCard({ order, index }: { order: Order; index: number }) {
   const router = useRouter();
   const config = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
   const StatusIcon = config.icon;
-  const date = new Date(order.created_at);
-  const dateStr = date.toLocaleDateString("es-CU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const dateStr = useMemo(() => {
+    const date = new Date(order.created_at);
+    return date.toLocaleDateString("es-CU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  }, [order.created_at]);
   const profit = order.sale_price - order.base_price;
 
   return (
@@ -171,4 +179,4 @@ function OrderCard({ order, index }: { order: Order; index: number }) {
       </div>
     </motion.div>
   );
-}
+});

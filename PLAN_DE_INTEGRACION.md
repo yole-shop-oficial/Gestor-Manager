@@ -315,14 +315,14 @@ Chat profesional con conversaciones, chat global, anti-spam, paginación cursor,
 
 ---
 
-## 🟡 FASE 6: OPTIMIZACIÓN DE RENDER
+## 🟡 FASE 6: OPTIMIZACIÓN DE RENDER ✅
 **Prioridad**: MEDIA | **Tiempo estimado**: 2h | **Depende de**: Fase 2
 
 ### Objetivo
 Eliminar re-renderizados innecesarios, memoizar componentes, reducir repaints.
 
 ### Tareas
-- [ ] `React.memo` en componentes puros:
+- [x] `React.memo` en componentes puros:
   - `StatCard` (GestorDashboard)
   - `QuickAction` (GestorDashboard)
   - `AdminStat` (Admin)
@@ -330,22 +330,31 @@ Eliminar re-renderizados innecesarios, memoizar componentes, reducir repaints.
   - `OrderCard` (Orders)
   - `ProfileRow` (Profile)
   - `DetailRow` (OrderDetail)
-- [ ] `useMemo` en cálculos:
-  - Analytics calculations (GestorAnalytics, AdminAnalytics)
-  - Wallet balance sum
-  - Filtered order lists
-- [ ] Eliminar animación infinita del dot del Header:
-  - Cambiar `animate-pulse` por estado estático
-  - O usar CSS `animation-iteration-count: 3` y parar
-- [ ] Optimizar FloatingToolKit drag:
-  - Usar `useMotionValue` + `useTransform` en lugar de state para position
-  - Evitar re-render en cada pointermove
-- [ ] `npm run typecheck && npm run build && npm run test`
+  - `MiniKPI` (GestorAnalytics)
+  - `KPI` + `StatusBars` (AdminAnalytics)
+- [x] `useMemo` en cálculos:
+  - `filteredOrders` + `statusCounts` (Orders) — evita recalcular en cada render
+  - `maxCount` (GestorAnalytics) — evita Math.max en cada render
+  - `displayName` (GestorDashboard) — evita split en cada render
+  - `statusConfig` + `commission` (OrderDetail) — evita lookup en cada render
+  - `statusColor` + `statusLabel` + `genderLabel` (Profile) — evita switches en cada render
+  - `balance` + `totalCommissions` + `totalPayouts` + `entries` + `payouts` (Wallet) — derivaciones estables
+  - `statusBadge` memoizado con `useCallback` (Admin)
+  - `total` + porcentajes en `StatusBars` (AdminAnalytics) — cálculo extraído a componente memoizado
+- [x] Eliminar animación infinita del dot del Header:
+  - Ya corregido en FASE 3: badge usa `AnimatePresence` + scale (no `animate-pulse`)
+  - Badge solo visible cuando `hasUnread === true`, se oculta cuando no hay notificaciones
+- [x] Optimizar FloatingToolKit drag:
+  - `useState({ x, y })` → `useMotionValue(16)` para posX y posY
+  - `setPos()` (re-render) → `posX.set()` / `posY.set()` (sin re-render)
+  - `didDrag` ref para distinguir click vs drag (sin re-render)
+  - `<div style={{ bottom: pos.y, right: pos.x }}>` → `<motion.div style={{ bottom: posY, right: posX }}>`
+- [x] `npm run typecheck && npm run build && npm run test` — ✅ 24 tests, 0 errores
 
 ### Verificación
 - React DevTools Profiler: menos renders al interactuar
-- Header dot no causa repaints constantes
-- Drag del FloatingToolKit no causa lag
+- Header dot no causa repaints constantes (ya corregido en FASE 3)
+- Drag del FloatingToolKit no causa re-renders (useMotionValue)
 
 ---
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   ShoppingCart,
@@ -52,7 +53,7 @@ export function GestorDashboard() {
     staleTime: 30_000,
   });
 
-  const displayName = profile?.full_name || profile?.username || user?.email?.split("@")[0] || "Gestor";
+  const displayName = useMemo(() => profile?.full_name || profile?.username || user?.email?.split("@")[0] || "Gestor", [profile?.full_name, profile?.username, user?.email]);
 
   if (statsError) {
     return (
@@ -145,7 +146,7 @@ export function GestorDashboard() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, gradient, loading }: { icon: React.ElementType; label: string; value: number | string; gradient: string; loading?: boolean }) {
+const StatCard = React.memo(function StatCard({ icon: Icon, label, value, gradient, loading }: { icon: React.ElementType; label: string; value: number | string; gradient: string; loading?: boolean }) {
   return (
     <div className="rounded-[20px] card-filled p-3 space-y-2">
       <div className={`w-8 h-8 rounded-[12px] bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg`}>
@@ -159,9 +160,9 @@ function StatCard({ icon: Icon, label, value, gradient, loading }: { icon: React
       <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
     </div>
   );
-}
+});
 
-function QuickAction({ icon: Icon, label, desc, href, gradient }: { icon: React.ElementType; label: string; desc: string; href: string; gradient: string }) {
+const QuickAction = React.memo(function QuickAction({ icon: Icon, label, desc, href, gradient }: { icon: React.ElementType; label: string; desc: string; href: string; gradient: string }) {
   return (
     <Link href={href}>
       <motion.div whileTap={{ scale: 0.98 }} className="flex items-center gap-3 p-4 rounded-[20px] card-filled">
@@ -176,4 +177,4 @@ function QuickAction({ icon: Icon, label, desc, href, gradient }: { icon: React.
       </motion.div>
     </Link>
   );
-}
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useSupabaseQuery } from "@/hooks";
+import React, { useMemo } from "react";
 import { ShoppingCart, DollarSign, TrendingUp, Loader2, BarChart3, AlertTriangle } from "lucide-react";
 
 interface GestorAnalyticsData {
@@ -58,7 +59,7 @@ export function GestorAnalytics() {
   );
   if (!data) return null;
 
-  const maxCount = Math.max(...data.recentOrders.map(m => m.count), 1);
+  const maxCount = useMemo(() => Math.max(...data.recentOrders.map(m => m.count), 1), [data.recentOrders]);
 
   return (
     <div className="space-y-4">
@@ -88,7 +89,7 @@ export function GestorAnalytics() {
   );
 }
 
-function MiniKPI({ icon: Icon, label, value, color }: {
+const MiniKPI = React.memo(function MiniKPI({ icon: Icon, label, value, color }: {
   icon: React.ElementType; label: string; value: number | string; color: string;
 }) {
   return (
@@ -98,4 +99,4 @@ function MiniKPI({ icon: Icon, label, value, color }: {
       <p className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
     </div>
   );
-}
+});
