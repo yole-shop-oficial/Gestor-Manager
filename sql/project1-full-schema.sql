@@ -450,3 +450,13 @@ CREATE POLICY "order_images_storage_insert"
   ON storage.objects
   FOR INSERT
   WITH CHECK (bucket_id = 'order-images' AND auth.uid() IS NOT NULL);
+
+-- ═══════════════════════════════════════════════════════════
+-- PASO 17: Permisos para supabase_auth_admin (CRITICAL!)
+-- ═══════════════════════════════════════════════════════════
+-- Sin estos permisos, el trigger handle_new_user no puede
+-- insertar en public.profiles cuando GoTrue crea un usuario
+
+GRANT ALL ON public.profiles TO supabase_auth_admin;
+GRANT ALL ON public.round_robin_counter TO supabase_auth_admin;
+GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
