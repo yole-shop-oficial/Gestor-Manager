@@ -6,6 +6,7 @@ import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession } from "@/hooks";
 import { clearUserProject } from "@/services/supabase/roundRobin";
 import React, { useState, useMemo } from "react";
+import { StatusBadge, LoadingSpinner } from "@/components/shared";
 import Link from "next/link";
 import {
   User,
@@ -69,28 +70,6 @@ function ProfileContent() {
     }
   };
 
-  const statusColor = useMemo(() =>
-    profile?.status === "active"
-      ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-      : profile?.status === "pending"
-      ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-      : profile?.status === "denied"
-      ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-      : profile?.status === "blocked"
-      ? "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400"
-      : "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400",
-    [profile?.status]
-  );
-
-  const statusLabel = useMemo(() =>
-    profile?.status === "active" ? "Activa"
-      : profile?.status === "pending" ? "Pendiente"
-      : profile?.status === "denied" ? "Denegada"
-      : profile?.status === "blocked" ? "Bloqueada"
-      : "Desconocido",
-    [profile?.status]
-  );
-
   const genderLabel = useMemo(() =>
     profile?.gender === "male" ? "Masculino"
       : profile?.gender === "female" ? "Femenino"
@@ -116,7 +95,7 @@ function ProfileContent() {
             <h2 className="text-lg font-bold truncate">{profile?.full_name || user?.email?.split("@")[0] || "Gestor"}</h2>
             <p className="text-xs text-white/70">@{profile?.username || "—"}</p>
             <div className="flex items-center gap-2 mt-1">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColor}`}>{statusLabel}</span>
+              <StatusBadge status={(profile?.status || "pending") as any} />
               <span className="text-[10px] text-white/50 capitalize">{profile?.role === "gestor" ? "Gestor" : profile?.role === "admin" ? "Admin" : profile?.role === "moderator" ? "Moderador" : "Gestor"}</span>
             </div>
           </div>
@@ -126,7 +105,7 @@ function ProfileContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="rounded-[24px] card-filled p-5 space-y-4">
         <h3 className="text-sm font-semibold">Datos personales</h3>
         {profileLoading ? (
-          <div className="flex items-center justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          <div className="flex items-center justify-center py-6"><LoadingSpinner size="sm" variant="muted" /></div>
         ) : (
           <div className="space-y-3">
             <ProfileRow icon={Mail} label="Correo" value={profile?.email || user?.email || "—"} />

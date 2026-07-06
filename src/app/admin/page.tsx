@@ -7,6 +7,7 @@ import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } fr
 import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { StatusBadge, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import {
   Users,
   ShoppingCart,
@@ -265,11 +266,7 @@ function AdminContent() {
 
   // Si no es admin, no mostrar
   if (profileLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <LoadingSpinner centered />;
   }
 
   if (!isAdmin) {
@@ -291,23 +288,13 @@ function AdminContent() {
   if (kpisError) {
     return (
       <div className="p-6 pb-24">
-        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando panel admin</p>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{kpisError.message}</p>
-        </div>
+        <ErrorPanel title="Error cargando panel admin" message={kpisError.message} />
       </div>
     );
   }
 
   const statusBadge = useCallback((status: string) => {
-    const map: Record<string, { label: string; className: string }> = {
-      pending: { label: "Pendiente", className: "badge-yellow bg-yellow-100 text-yellow-700 dark:bg-transparent" },
-      active: { label: "Activa", className: "badge-green bg-green-100 text-green-700 dark:bg-transparent" },
-      denied: { label: "Denegada", className: "badge-red bg-red-100 text-red-700 dark:bg-transparent" },
-      blocked: { label: "Bloqueada", className: "badge-gray bg-gray-100 text-gray-700 dark:bg-transparent" },
-    };
-    const s = map[status] || map.pending;
-    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.className}`}>{s.label}</span>;
+    return <StatusBadge status={status as any} />;
   }, []);
 
   return (

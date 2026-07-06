@@ -16,16 +16,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { StatusBadge, LoadingSpinner, ErrorPanel } from "@/components/shared";
 
 const GestorAnalytics = dynamic(
   () => import("./GestorAnalytics").then((m) => ({ default: m.GestorAnalytics })),
-  {
-    loading: () => (
-      <div className="flex justify-center py-8">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    ),
-  }
+  { loading: () => <div className="flex justify-center py-8"><LoadingSpinner size="sm" /></div> }
 );
 
 interface DashboardStats {
@@ -43,10 +38,7 @@ export function GestorDashboard() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useSupabaseQuery<DashboardStats>({
     key: ["gestor-dashboard", userId],
     queryFn: async (client, uid) => {
-      const { data, error } = await client.rpc("get_gestor_dashboard", {
-        p_manager_id: uid,
-      });
-
+      const { data, error } = await client.rpc("get_gestor_dashboard", { p_manager_id: uid });
       if (error) throw new Error(error.message);
       return (data as DashboardStats) || { totalOrders: 0, pendingOrders: 0, soldOrders: 0, balance: 0 };
     },
@@ -58,10 +50,7 @@ export function GestorDashboard() {
   if (statsError) {
     return (
       <div className="p-6 pb-24">
-        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando dashboard</p>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{statsError.message}</p>
-        </div>
+        <ErrorPanel title="Error cargando dashboard" message={statsError.message} />
       </div>
     );
   }
@@ -72,16 +61,8 @@ export function GestorDashboard() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">¡Hola, {displayName}!</h1>
-          {isActive && (
-            <span className="px-2 py-0.5 rounded-full badge-green bg-green-100 text-green-700 dark:bg-transparent text-[10px] font-bold">
-              Activo
-            </span>
-          )}
-          {isPending && (
-            <span className="px-2 py-0.5 rounded-full badge-yellow bg-yellow-100 text-yellow-700 dark:bg-transparent text-[10px] font-bold">
-              Pendiente
-            </span>
-          )}
+          {isActive && <StatusBadge status="active" />}
+          {isPending && <StatusBadge status="pending" />}
         </div>
         <p className="text-sm text-muted-foreground">
           {isActive

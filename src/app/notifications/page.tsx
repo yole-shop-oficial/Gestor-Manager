@@ -6,6 +6,7 @@ import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseInfiniteQuery, invalidate, useRealtime } from "@/hooks";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import {
   Bell,
   CheckCircle2,
@@ -171,10 +172,7 @@ function NotificationsContent() {
   if (notifError) {
     return (
       <div className="p-6 pb-24">
-        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando notificaciones</p>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{notifError.message}</p>
-        </div>
+        <ErrorPanel title="Error cargando notificaciones" message={notifError.message} />
       </div>
     );
   }
@@ -205,14 +203,10 @@ function NotificationsContent() {
       {/* Lista */}
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <LoadingSpinner variant="muted" />
         </div>
       ) : notifications.length === 0 ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card-filled rounded-[24px] p-12 text-center">
-          <Bell className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-          <p className="font-semibold">Sin notificaciones</p>
-          <p className="text-xs text-muted-foreground mt-1">Te avisaremos cuando haya novedades</p>
-        </motion.div>
+        <EmptyState icon={Bell} title="Sin notificaciones" description="Te avisaremos cuando haya novedades" />
       ) : (
         <div className="space-y-2">
           {notifications.map((n, i) => {

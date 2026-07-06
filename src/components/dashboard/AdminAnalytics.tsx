@@ -3,8 +3,9 @@
 import { useSession, useSupabaseQuery } from "@/hooks";
 import React, { useMemo } from "react";
 import {
-  TrendingUp, Users, ShoppingCart, DollarSign, Loader2,
+  TrendingUp, Users, ShoppingCart, DollarSign,
 } from "lucide-react";
+import { LoadingSpinner, ErrorPanel, EmptyState } from "@/components/shared";
 
 interface AnalyticsData {
   totals: {
@@ -72,12 +73,8 @@ export function AdminAnalytics() {
     enabled: isAdmin,
   });
 
-  if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
-  if (error) return (
-    <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-4 text-center">
-      <p className="text-xs text-red-700 dark:text-red-400">Error cargando analytics: {error.message}</p>
-    </div>
-  );
+  if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
+  if (error) return <ErrorPanel title="Error" message={`Error cargando analytics: ${error.message}`} compact />;
   if (!data) return null;
 
   return (
@@ -114,7 +111,7 @@ export function AdminAnalytics() {
               <span className="text-sm font-bold text-green-600 dark:text-green-400">${g.comision.toFixed(0)}</span>
             </div>
           ))}
-          {data.topGestores.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Sin datos aún</p>}
+          {data.topGestores.length === 0 && <EmptyState icon={Users} title="Sin datos aún" className="!p-4 !rounded-2xl border-0" />}
         </div>
       </div>
     </div>

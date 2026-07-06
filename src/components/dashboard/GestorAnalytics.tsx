@@ -2,7 +2,8 @@
 
 import { useSession, useSupabaseQuery } from "@/hooks";
 import React, { useMemo } from "react";
-import { ShoppingCart, DollarSign, TrendingUp, Loader2, BarChart3, AlertTriangle } from "lucide-react";
+import { ShoppingCart, DollarSign, TrendingUp, BarChart3 } from "lucide-react";
+import { LoadingSpinner, ErrorPanel } from "@/components/shared";
 
 interface GestorAnalyticsData {
   totalOrders: number;
@@ -51,12 +52,8 @@ export function GestorAnalytics() {
     staleTime: 60_000, // 60s
   });
 
-  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
-  if (error) return (
-    <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-4 text-center">
-      <p className="text-xs text-red-700 dark:text-red-400">Error cargando estadísticas: {error.message}</p>
-    </div>
-  );
+  if (isLoading) return <div className="flex justify-center py-8"><LoadingSpinner size="sm" /></div>;
+  if (error) return <ErrorPanel title="Error" message={`Error cargando estadísticas: ${error.message}`} compact />;
   if (!data) return null;
 
   const maxCount = useMemo(() => Math.max(...data.recentOrders.map(m => m.count), 1), [data.recentOrders]);

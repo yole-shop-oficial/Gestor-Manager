@@ -6,6 +6,8 @@ import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseInfiniteQuery } from "@/hooks";
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { StatusBadge, EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
+import type { StatusType } from "@/components/shared";
 import {
   ShoppingCart,
   Clock,
@@ -137,10 +139,7 @@ function OrdersContent() {
   if (ordersError) {
     return (
       <div className="p-6 pb-24">
-        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando pedidos</p>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{ordersError.message}</p>
-        </div>
+        <ErrorPanel title="Error cargando pedidos" message={ordersError.message} />
       </div>
     );
   }
@@ -162,13 +161,9 @@ function OrdersContent() {
       </motion.div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+        <div className="flex items-center justify-center py-16"><LoadingSpinner variant="muted" /></div>
       ) : filteredOrders.length === 0 ? (
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="rounded-[24px] card-filled border-dashed border-border/70 p-8 text-center">
-          <ShoppingCart className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-          <h3 className="text-base font-semibold mb-1">{orders.length === 0 ? "Sin pedidos aún" : "Sin resultados"}</h3>
-          <p className="text-sm text-muted-foreground">{orders.length === 0 ? "Los pedidos que crees aparecerán aquí." : "No hay pedidos con este filtro."}</p>
-        </motion.div>
+        <EmptyState icon={ShoppingCart} title={orders.length === 0 ? "Sin pedidos aún" : "Sin resultados"} description={orders.length === 0 ? "Los pedidos que crees aparecerán aquí." : "No hay pedidos con este filtro."} />
       ) : (
         <AnimatePresence mode="popLayout">
           <div className="space-y-3">
@@ -205,8 +200,6 @@ const FilterChip = React.memo(function FilterChip({ active, onClick, label }: { 
 
 const OrderCard = React.memo(function OrderCard({ order, index }: { order: Order; index: number }) {
   const router = useRouter();
-  const config = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
-  const StatusIcon = config.icon;
   const dateStr = useMemo(() => {
     const date = new Date(order.created_at);
     return date.toLocaleDateString("es-CU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -227,9 +220,7 @@ const OrderCard = React.memo(function OrderCard({ order, index }: { order: Order
           <h4 className="text-sm font-bold truncate">{order.product_name}</h4>
           <p className="text-xs text-muted-foreground">{order.customer_name}</p>
         </div>
-        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${config.color}`}>
-          <StatusIcon className="w-3 h-3" />{config.label}
-        </span>
+        <StatusBadge status={order.status as StatusType} icon={STATUS_CONFIG[order.status]?.icon} />
       </div>
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">

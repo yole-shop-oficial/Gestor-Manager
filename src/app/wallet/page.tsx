@@ -7,6 +7,7 @@ import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } fr
 import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import {
   Wallet,
   TrendingUp,
@@ -189,20 +190,13 @@ function WalletContent() {
   if (walletError) {
     return (
       <div className="p-6 pb-24">
-        <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-6 text-center">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Error cargando billetera</p>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">{walletError.message}</p>
-        </div>
+        <ErrorPanel title="Error cargando billetera" message={walletError.message} />
       </div>
     );
   }
 
   if (summaryLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <LoadingSpinner centered />;
   }
 
   return (
@@ -355,11 +349,7 @@ function WalletContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="space-y-2">
         <h2 className="text-sm font-semibold">Movimientos recientes</h2>
         {entries.length === 0 ? (
-          <div className="card-filled rounded-[20px] p-8 text-center">
-            <Wallet className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No hay movimientos aún</p>
-            <p className="text-xs text-muted-foreground mt-1">Los pedidos vendidos generarán comisiones aquí</p>
-          </div>
+          <EmptyState icon={Wallet} title="No hay movimientos aún" description="Los pedidos vendidos generarán comisiones aquí" />
         ) : (
           <>
             {entries.map((e) => (

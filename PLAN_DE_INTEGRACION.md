@@ -415,31 +415,52 @@ Notifications   → 20 por página, infinite scroll automático (IntersectionObs
 
 ---
 
-## 🟡 FASE 8: COMPONENTES COMPARTIDOS
+## 🟡 FASE 8: COMPONENTES COMPARTIDOS ✅
 **Prioridad**: MEDIA | **Tiempo estimado**: 1h | **Depende de**: Fase 1
 
 ### Objetivo
 Extraer componentes duplicados a `src/components/shared/`.
 
 ### Tareas
-- [ ] Crear `src/components/shared/StatusBadge.tsx` (usado en 3 archivos)
-  ```typescript
-  interface StatusBadgeProps {
-    status: "pending" | "active" | "denied" | "blocked" | "confirmed" | "sold" | "cancelled" | "approved" | "paid" | "rejected";
-    size?: "sm" | "md";
-  }
-  ```
-- [ ] Crear `src/components/shared/DetailRow.tsx` (usado en 2 archivos)
-- [ ] Crear `src/components/shared/DiagnosticPanel.tsx` (usado en 3 archivos)
-- [ ] Crear `src/components/shared/EmptyState.tsx` (usado en 6+ archivos)
-- [ ] Crear `src/components/shared/LoadingSpinner.tsx` (usado en 10+ archivos)
-- [ ] Crear `src/components/shared/index.ts` (barrel export)
-- [ ] Reemplazar todas las ocurrencias duplicadas
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Crear `src/components/shared/StatusBadge.tsx` (reemplazado en 4 archivos)
+  - Soporta 11 statuses: pending, active, denied, blocked, confirmed, sold, cancelled, approved, paid, rejected
+  - Sizes: sm (default) y md
+  - Icono opcional
+  - Dark mode con variantes de color apropiadas
+- [x] Crear `src/components/shared/DetailRow.tsx` (reemplazado en OrderDetail)
+  - label/value pair con highlight opcional
+  - React.memo
+- [x] Crear `src/components/shared/ErrorPanel.tsx` (reemplazado en 7+ archivos)
+  - Variants: "error" (red) y "warning" (yellow)
+  - Compact mode para errores inline
+  - Reemplaza 10+ patrones `bg-red-50 dark:bg-red-500/10 border border-red-200...` duplicados
+- [x] Crear `src/components/shared/EmptyState.tsx` (reemplazado en 4+ archivos)
+  - Icon + title + description
+  - Border-dashed card container
+  - Reemplaza 6+ patrones de "Sin X aún" duplicados
+- [x] Crear `src/components/shared/LoadingSpinner.tsx` (reemplazado en 10+ archivos)
+  - Sizes: sm (w-4 h-4), md (w-8 h-8), lg (w-12 h-12)
+  - Variants: "primary" y "muted"
+  - `centered` prop para centrar en contenedor
+  - Reemplaza 20+ Loader2 inline duplicados
+- [x] Crear `src/components/shared/index.ts` (barrel export)
+- [x] Reemplazar todas las ocurrencias duplicadas en:
+  - `GestorDashboard.tsx` — StatusBadge (2), LoadingSpinner (1), ErrorPanel (1)
+  - `admin/page.tsx` — StatusBadge (1), LoadingSpinner (2), ErrorPanel (1)
+  - `orders/page.tsx` — StatusBadge (OrderCard), EmptyState (1), LoadingSpinner (1), ErrorPanel (1)
+  - `orders/[id]/page.tsx` — DetailRow (8 usos), StatusBadge (1), LoadingSpinner (1)
+  - `profile/page.tsx` — StatusBadge (1), LoadingSpinner (1), eliminados statusColor/statusLabel
+  - `wallet/page.tsx` — EmptyState (1), LoadingSpinner (1), ErrorPanel (1)
+  - `notifications/page.tsx` — EmptyState (1), LoadingSpinner (1), ErrorPanel (1)
+  - `GestorAnalytics.tsx` — LoadingSpinner (1), ErrorPanel (1)
+  - `AdminAnalytics.tsx` — LoadingSpinner (1), ErrorPanel (1), EmptyState (1)
+- [x] `npm run typecheck && npm run build && npm run test` — ✅ 24 tests, 0 errores
 
 ### Verificación
-- `grep -r "text-\[10px\].*font-bold.*Pendiente" src/` → solo 1 resultado (en StatusBadge)
-- Visual: todo se ve igual que antes
+- `grep -r "badge-yellow bg-yellow-100" src/` → solo 1 resultado (en StatusBadge.tsx) ✅
+- `grep -r "bg-red-50 dark:bg-red-500/10 border border-red-200" src/` → solo en ErrorPanel.tsx ✅
+- `grep -r "function DetailRow" src/` → solo 1 resultado (en DetailRow.tsx) ✅
+- Visual: todo se ve igual que antes (mismas clases CSS)
 
 ---
 

@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
 import React, { useState, useMemo } from "react";
+import { StatusBadge, DetailRow, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
@@ -144,11 +145,7 @@ function OrderDetailContent() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <LoadingSpinner centered />;
   }
 
   if (queryError || !order) {
@@ -173,9 +170,7 @@ function OrderDetailContent() {
           <h1 className="text-xl font-bold truncate">{order.product_name}</h1>
           <p className="text-xs text-muted-foreground">Pedido #{order.id.slice(0, 8)}</p>
         </div>
-        <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${statusConfig.color}`}>
-          {statusConfig.label}
-        </span>
+        <StatusBadge status={order.status as any} size="md" />
       </motion.div>
 
       {/* Imágenes */}
@@ -266,11 +261,4 @@ function OrderDetailContent() {
   );
 }
 
-const DetailRow = React.memo(function DetailRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex justify-between items-center">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={`text-sm font-semibold text-right max-w-[60%] truncate ${highlight ? "text-green-600 dark:text-green-400" : ""}`}>{value}</span>
-    </div>
-  );
-});
+// DetailRow is now imported from @/components/shared
