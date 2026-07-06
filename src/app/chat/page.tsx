@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSupabaseUser } from "@/features/auth/hooks/useSupabaseUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -35,7 +35,7 @@ export default function ChatPage() {
 }
 
 function ChatContent() {
-  const { user, client, project } = useSupabaseUser();
+  const { user, client, project } = useSession();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);

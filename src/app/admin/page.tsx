@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -82,7 +82,7 @@ export default function AdminPage() {
 }
 
 function AdminContent() {
-  const { user, client, project, profile, profileLoading } = useAppUser();
+  const { user, client, project, profile, profileLoading } = useSession();
   const [stats, setStats] = useState<AdminStats>({
     totalUsers: 0,
     pendingUsers: 0,

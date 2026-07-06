@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -29,7 +29,7 @@ export default function NewOrderPage() {
 }
 
 function NewOrderContent() {
-  const { user, client, project, profile, isActive } = useAppUser();
+  const { user, client, project, profile, isActive } = useSession();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);

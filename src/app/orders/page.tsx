@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSupabaseUser } from "@/features/auth/hooks/useSupabaseUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -51,7 +51,7 @@ export default function OrdersPage() {
 }
 
 function OrdersContent() {
-  const { user, client, project } = useSupabaseUser();
+  const { user, client, project } = useSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

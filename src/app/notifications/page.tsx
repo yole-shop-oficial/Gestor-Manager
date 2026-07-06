@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -38,7 +38,7 @@ export default function NotificationsPage() {
 }
 
 function NotificationsContent() {
-  const { user, client, project } = useAppUser();
+  const { user, client, project } = useSession();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const channelRef = useRef<RealtimeChannel | null>(null);

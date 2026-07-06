@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -20,7 +20,7 @@ interface AnalyticsData {
 }
 
 export function AdminAnalytics() {
-  const { user, client, project, profile } = useAppUser();
+  const { user, client, project, profile } = useSession();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Home, ShoppingCart, Wallet, MessageCircle, User, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 
 const gestorItems = [
   { label: "Inicio", icon: Home, href: "/" },
@@ -26,7 +26,7 @@ const adminItems = [
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { profile, profileLoading } = useAppUser();
+  const { profile, profileLoading } = useSession();
 
   const isAdmin = profile?.role === "admin";
   const items = isAdmin ? adminItems : gestorItems;

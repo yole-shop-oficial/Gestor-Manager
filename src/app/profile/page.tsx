@@ -3,9 +3,9 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSupabaseUser } from "@/features/auth/hooks/useSupabaseUser";
-import { clearUserProject, getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-import { useState, useEffect, useCallback } from "react";
+import { useSession } from "@/hooks";
+import { clearUserProject } from "@/services/supabase/roundRobin";
+import { useState } from "react";
 import Link from "next/link";
 import {
   User,
@@ -55,44 +55,15 @@ export default function ProfilePage() {
 }
 
 function ProfileContent() {
-  const { user, client, project } = useSupabaseUser();
+  const { user, client, project, profile, profileLoading } = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
-
-  const loadProfile = useCallback(async () => {
-    if (!user || !project) {
-      setProfileLoading(false);
-      return;
-    }
-
-    try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-
-      if (error) {
-        console.error("[PROFILE] Error cargando perfil:", error.message);
-      } else if (data) {
-        setProfile(data as ProfileData);
-      }
-    } catch (err) {
-      console.error("[PROFILE] Excepción cargando perfil:", err);
-    } finally {
-      setProfileLoading(false);
-    }
-  }, [user, client, project]);
-
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
       if (client) await client.auth.signOut();
       clearUserProject();
+      window.location.href = "/welcome";
     } finally {
       setLoggingOut(false);
     }

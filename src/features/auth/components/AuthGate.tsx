@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useSupabaseUser } from "@/features/auth/hooks/useSupabaseUser";
+import { useSession } from "@/hooks";
 import { AppLoader } from "@/components/layout/app-loader";
 import {
   checkSupabaseConnectivity,
@@ -18,7 +18,7 @@ interface Props {
 const PUBLIC_ROUTES = ["/welcome", "/login", "/register"];
 
 export function AuthGate({ children }: Props) {
-  const { user, loading: userLoading } = useSupabaseUser();
+  const { user, loading: userLoading } = useSession();
   const router = useRouter();
   const pathname = usePathname();
 

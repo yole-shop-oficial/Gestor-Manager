@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
@@ -38,7 +38,7 @@ interface DashboardStats {
 }
 
 export function GestorDashboard() {
-  const { user, client, project, profile, isActive, isPending } = useAppUser();
+  const { user, client, project, profile, isActive, isPending } = useSession();
   const [stats, setStats] = useState<DashboardStats>({
     totalOrders: 0,
     pendingOrders: 0,

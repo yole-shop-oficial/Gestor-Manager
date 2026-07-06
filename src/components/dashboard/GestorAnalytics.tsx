@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppUser } from "@/features/auth/hooks/useAppUser";
+import { useSession } from "@/hooks";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { useState, useEffect, useCallback } from "react";
 import { ShoppingCart, DollarSign, TrendingUp, Loader2, BarChart3 } from "lucide-react";
@@ -15,7 +15,7 @@ interface GestorAnalyticsData {
 }
 
 export function GestorAnalytics() {
-  const { user, client, project } = useAppUser();
+  const { user, client, project } = useSession();
   const [data, setData] = useState<GestorAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
