@@ -12,6 +12,23 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Next.js requires unsafe-eval+inline
+              "style-src 'self' 'unsafe-inline'", // Tailwind requires inline styles
+              "img-src 'self' data: blob: https://lustmqeqbninkavixttz.supabase.co https://lqwyidsixjzjffwtrltw.supabase.co",
+              "font-src 'self'",
+              "connect-src 'self' https://lustmqeqbninkavixttz.supabase.co https://lqwyidsixjzjffwtrltw.supabase.co wss://lustmqeqbninkavixttz.supabase.co wss://lqwyidsixjzjffwtrltw.supabase.co https://api.supabase.com",
+              "frame-src 'none'",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "frame-ancestors 'none'",
+              "upgrade-insecure-requests",
+            ].join("; "),
+          },
         ],
       },
       {

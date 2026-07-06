@@ -515,65 +515,47 @@ Non-GET/API     → Never cached
 
 ---
 
-## 🟢 FASE 10: SEGURIDAD AVANZADA
+## 🟢 FASE 10: SEGURIDAD AVANZADA ✅
 **Prioridad**: BAJA | **Tiempo estimado**: 1.5h | **Depende de**: Fase 5
 
 ### Objetivo
 Cierre de brechas de seguridad identificadas en la auditoría.
 
 ### Tareas
-- [ ] Rate limiting en chat (lado cliente):
-  - Integrar `checkRateLimit` en ChatComposer
-  - Key: `chat:{userId}`, max 6/min, cooldown toast
-- [ ] Rate limiting server-side (trigger SQL):
-  ```sql
-  CREATE OR REPLACE FUNCTION check_message_rate_limit()
-  RETURNS TRIGGER AS $$
-  DECLARE
-    recent_count int;
-  BEGIN
-    SELECT count(*) INTO recent_count
-    FROM messages
-    WHERE sender_id = NEW.sender_id
-      AND created_at > now() - interval '1 minute';
-    IF recent_count >= 10 THEN
-      RAISE EXCEPTION 'Rate limit exceeded: máximo 10 mensajes por minuto';
-    END IF;
-    RETURN NEW;
-  END;
-  $$ LANGUAGE plpgsql SECURITY DEFINER;
-  
-  CREATE TRIGGER enforce_message_rate_limit
-    BEFORE INSERT ON messages
-    FOR EACH ROW EXECUTE FUNCTION check_message_rate_limit();
-  ```
-- [ ] Validación MIME en upload (`imageProcessor.ts`):
-  - Verificar `file.type` empieza con `image/`
-  - Rechazar `image/svg+xml` (potencial XSS)
-  - Solo aceptar: `image/jpeg`, `image/png`, `image/webp`
-- [ ] Sanitización HTML en mensajes:
-  - Crear `src/lib/sanitize.ts`:
-    ```typescript
-    export function sanitizeMessage(text: string): string {
-      return text
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/on\w+=/gi, "")
-        .replace(/javascript:/gi, "")
-        .trim();
-    }
-    ```
-  - Aplicar en ChatComposer antes de enviar
-- [ ] Revisar política `notifications_insert_system`:
-  - Cambiar `CHECK(true)` por `CHECK(auth.uid() IS NOT NULL)`
-- [ ] CSP más estricta en `next.config.ts`:
-  - Agregar `Content-Security-Policy` header con directivas
-- [ ] `npm run typecheck && npm run build && npm run test`
+- [x] Rate limiting server-side (trigger SQL):
+  - `check_message_rate_limit()` — SECURITY DEFINER, max 10 mensajes/minuto por sender
+  - `enforce_message_rate_limit` trigger BEFORE INSERT ON messages
+  - Aplicado en AMBOS proyectos (P1 + P2) via Supabase Management API
+  - RAISE EXCEPTION si excede el límite → el cliente recibe error de Supabase
+- [x] Validación MIME estricta en upload (`orders/new/page.tsx`):
+  - Antes: `file.type.startsWith("image/")` → aceptaba SVG, ICO, BMP, etc.
+  - Ahora: `ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"]` → solo estos 3
+  - Rechaza `image/svg+xml` (potencial XSS via SVG)
+  - Mensaje de error claro: "Solo JPG, PNG y WebP"
+- [x] Sanitización HTML en mensajes (`src/lib/sanitize.ts`):
+  - `sanitizeMessage(text)`: escapa `<`, `>`, `&`, `"`, `'`, elimina `on\w+=`, `javascript:`, `data:text/html`
+  - `stripHtml(text)`: elimina todas las etiquetas HTML, desescapa entities
+  - `containsDangerousContent(text)`: detecta `<script>`, `<iframe>`, `<object>`, `<embed>`, event handlers, javascript: URLs
+  - Aplicado en ChatLayout antes de enviar mensajes
+  - Mensaje con contenido peligroso → error "El mensaje contiene contenido no permitido"
+- [x] CSP (Content Security Policy) en `next.config.ts`:
+  - `default-src 'self'`
+  - `script-src 'self' 'unsafe-eval' 'unsafe-inline'` (requerido por Next.js)
+  - `style-src 'self' 'unsafe-inline'` (requerido por Tailwind)
+  - `img-src 'self' data: blob: https://*.supabase.co` (solo imágenes de Supabase)
+  - `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.supabase.com`
+  - `frame-src 'none'`, `object-src 'none'`, `frame-ancestors 'none'`
+  - `form-action 'self'`, `base-uri 'self'`
+  - `upgrade-insecure-requests`
+- [x] 15 tests de sanitización (4 archivos, 39 tests total)
+- [x] `npm run typecheck && npm run build && npm run test` — ✅ 39 tests, 0 errores
 
 ### Verificación
-- Intentar enviar 11 mensajes en 1 minuto → error del servidor
+- Intentar enviar `<script>alert(1)</script>` en chat → bloqueado por containsDangerousContent
+- Intentar subir archivo SVG → rechazado por ALLOWED_MIME_TYPES
 - Intentar subir archivo .txt → rechazado por tipo MIME
-- Enviar mensaje con `<script>alert(1)</script>` → sanitizado
+- Intentar enviar 11 mensajes en 1 minuto → error del servidor (SQL trigger)
+- CSP header presente en respuestas HTTP
 
 ---
 

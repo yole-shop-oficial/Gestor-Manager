@@ -68,8 +68,13 @@ function NewOrderContent() {
     setError(null);
     try {
       const processed: ProcessedImage[] = [];
+      // Allowed MIME types — strict validation (no SVG to prevent XSS)
+      const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
       for (const file of selectedFiles) {
-        if (!file.type.startsWith("image/")) { setError("Solo se aceptan archivos de imagen"); continue; }
+        if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+          setError(`Tipo de archivo no permitido: ${file.type || "desconocido"}. Solo JPG, PNG y WebP.`);
+          continue;
+        }
         if (file.size > 10 * 1024 * 1024) { setError("Cada imagen debe ser menor a 10MB"); continue; }
         const result = await processImageForUpload(file);
         processed.push(result);

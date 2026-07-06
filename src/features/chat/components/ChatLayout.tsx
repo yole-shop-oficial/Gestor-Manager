@@ -7,6 +7,7 @@ import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRo
 import { useConversations } from "../hooks/useConversations";
 import { useMessages } from "../hooks/useMessages";
 import { checkSpam, recordMessage } from "../anti-spam";
+import { sanitizeMessage, containsDangerousContent } from "@/lib/sanitize";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatWindow } from "./ChatWindow";
 import type { ChatMessage } from "../types";
@@ -101,6 +102,14 @@ export function ChatLayout() {
       return;
     }
 
+    // Security: sanitize message to prevent XSS
+    const sanitizedBody = sanitizeMessage(body.trim());
+    if (containsDangerousContent(body.trim())) {
+      setSpamError("El mensaje contiene contenido no permitido");
+      setTimeout(() => setSpamError(null), 3000);
+      return;
+    }
+
     setSpamError(null);
     setSending(true);
 
@@ -109,7 +118,7 @@ export function ChatLayout() {
       id: `temp-${Date.now()}`,
       sender_id: user.id,
       recipient_id: "", // Will be filled by server
-      body: body.trim(),
+      body: sanitizedBody,
       read_at: null,
       created_at: new Date().toISOString(),
       conversation_id: conversationId,
@@ -120,11 +129,9 @@ export function ChatLayout() {
       const config = getProjectConfig(project);
       const supabase = client || createLoginClient(config);
 
-      // For private chats without conversation_id on messages, use old format
-      // For conversations, use conversation_id
       const insertData: Record<string, unknown> = {
         sender_id: user.id,
-        body: body.trim(),
+        body: sanitizedBody,
         conversation_id: conversationId,
       };
 
@@ -153,7 +160,7 @@ export function ChatLayout() {
         console.error("[CHAT] Error sending:", error.message);
         setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
       } else {
-        recordMessage(userId, body.trim());
+        recordMessage(userId, sanitizedBody);
         setOptimisticMessages([]);
       }
     } catch (err) {
