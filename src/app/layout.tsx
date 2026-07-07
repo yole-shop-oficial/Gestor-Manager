@@ -4,6 +4,7 @@ import "./globals.css";
 
 import QueryProvider from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { AppGate } from "@/components/security/AppGate";
 
 export const metadata: Metadata = {
   title: "YOLE SHOP",
@@ -52,9 +53,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // ⚠️ NO poner maximumScale=1 ni userScalable=false
-  // iOS Safari 16+ lo bloquea por accesibilidad
-  // Si lo pones, Safari puede no cargar bien la página
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f8f9fc" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0e27" },
@@ -73,22 +71,31 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js', { scope: '/' })
                     .then(function(reg) {
-                      // SW registrado OK
                       reg.onupdatefound = function() {
                         var newWorker = reg.installing;
                         newWorker.onstatechange = function() {
                           if (newWorker.state === 'activated') {
-                            // Nuevo SW activado — recargar si es necesario
+                            // Nuevo SW activado
                           }
                         };
                       };
                     })
                     .catch(function(err) {
-                      // SW falló — la app sigue funcionando sin SW
                       console.warn('[SW] Registro falló (no crítico):', err);
                     });
                 });
               }
+
+              // Load saved accent color on initial load (prevents flash)
+              try {
+                var light = localStorage.getItem('yole_accent_light');
+                var dark = localStorage.getItem('yole_accent_dark');
+                if (light) {
+                  var isDark = document.documentElement.classList.contains('dark') || 
+                    window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  document.documentElement.style.setProperty('--primary', isDark && dark ? dark : light);
+                }
+              } catch(e) {}
             `,
           }}
         />
@@ -101,7 +108,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           disableTransitionOnChange
         >
           <QueryProvider>
-            {children}
+            <AppGate>
+              {children}
+            </AppGate>
           </QueryProvider>
         </ThemeProvider>
       </body>

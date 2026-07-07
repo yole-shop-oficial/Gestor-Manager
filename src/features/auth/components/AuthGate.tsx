@@ -15,7 +15,7 @@ interface Props {
   children: React.ReactNode;
 }
 
-const PUBLIC_ROUTES = ["/welcome", "/login", "/register"];
+const PUBLIC_ROUTES = ["/welcome", "/login", "/register", "/setup"];
 
 export function AuthGate({ children }: Props) {
   const { user, loading: userLoading } = useSession();
