@@ -4,7 +4,7 @@ import "./globals.css";
 
 import QueryProvider from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
-import { AppGate } from "@/components/security/AppGate";
+import { ErrorBoundary } from "@/components/security/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "YOLE SHOP",
@@ -108,9 +108,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           disableTransitionOnChange
         >
           <QueryProvider>
-            <AppGate>
+            <ErrorBoundary>
               {children}
-            </AppGate>
+            </ErrorBoundary>
           </QueryProvider>
         </ThemeProvider>
       </body>

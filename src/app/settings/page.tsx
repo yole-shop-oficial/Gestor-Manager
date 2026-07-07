@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { clearUserProject } from "@/services/supabase/roundRobin";
 import { resetSetup, clearAllAppCache } from "@/features/setup/settings";
+import { clearSession } from "@/hooks/useSession";
 
 export default function SettingsPage() {
   return (
@@ -91,6 +92,7 @@ function SettingsContent() {
   const handleLogout = async () => {
     if (client) await client.auth.signOut();
     clearUserProject();
+    clearSession();
     router.push("/welcome");
   };
 

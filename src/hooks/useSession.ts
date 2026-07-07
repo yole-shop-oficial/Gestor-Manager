@@ -53,11 +53,14 @@ export interface UseSessionResult {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SESSION STATE (immutable snapshot pattern for useSyncExternalStore)
+// SESSION STATE — Immutable snapshot pattern
 //
-// Key insight: useSyncExternalStore compares snapshots with Object.is().
-// We MUST create a new object reference ONLY when state actually changes.
-// This prevents React from re-rendering when nothing changed.
+// IMPORTANT: NO onAuthStateChange listeners!
+// Supabase's onAuthStateChange fires INITIAL_SESSION synchronously,
+// which causes React #310 (infinite re-render) in production.
+// Instead, we detect login via setSession() called directly
+// from loginWithRoundRobin, and logout via clearSession() 
+// called from the UI logout button.
 // ═══════════════════════════════════════════════════════════
 
 interface SessionSnapshot {
@@ -65,7 +68,7 @@ interface SessionSnapshot {
   client: SupabaseClient | null;
   project: 1 | 2 | null;
   loading: boolean;
-  version: number; // incremented on each change for reliable comparison
+  version: number;
 }
 
 let snapshot: SessionSnapshot = {
@@ -76,10 +79,6 @@ let snapshot: SessionSnapshot = {
   version: 0,
 };
 
-// ═══════════════════════════════════════════════════════════
-// LISTENERS (for useSyncExternalStore subscribe/unsubscribe)
-// ═══════════════════════════════════════════════════════════
-
 const listeners = new Set<() => void>();
 
 function emitChange() {
@@ -87,37 +86,27 @@ function emitChange() {
   listeners.forEach((fn) => fn());
 }
 
-function subscribe(callback: () => void): () => void {
-  listeners.add(callback);
-  return () => listeners.delete(callback);
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
 
-function getSnapshot(): SessionSnapshot {
-  return snapshot;
-}
-
+function getSnapshot(): SessionSnapshot { return snapshot; }
 function getServerSnapshot(): SessionSnapshot {
   return { user: null, client: null, project: null, loading: true, version: 0 };
 }
 
 // ═══════════════════════════════════════════════════════════
-// PUBLIC: Set session (called by loginWithRoundRobin after login)
+// PUBLIC API: setSession / clearSession
 // ═══════════════════════════════════════════════════════════
 
 export function setSession(user: User, client: SupabaseClient, project: 1 | 2): void {
-  // Skip if already set to same values
-  if (snapshot.user?.id === user.id && snapshot.project === project && !snapshot.loading) {
-    return;
-  }
+  if (snapshot.user?.id === user.id && snapshot.project === project && !snapshot.loading) return;
   snapshot = { user, client, project, loading: false, version: snapshot.version + 1 };
   saveUserProject(project);
   logger.setUser(user.id, project);
   listeners.forEach((fn) => fn());
 }
-
-// ═══════════════════════════════════════════════════════════
-// PUBLIC: Clear session (called on logout)
-// ═══════════════════════════════════════════════════════════
 
 export function clearSession(): void {
   if (snapshot.user === null && !snapshot.loading) return;
@@ -149,11 +138,11 @@ function setCachedProfile(userId: string, profile: UserProfile): void {
 function clearCachedProfile(userId: string): void { profileCache.delete(userId); }
 
 // ═══════════════════════════════════════════════════════════
-// INIT: Check for existing session (runs ONCE via promise guard)
+// INIT: Check for existing session (runs ONCE)
+// NO onAuthStateChange — just getUser() on both projects
 // ═══════════════════════════════════════════════════════════
 
 let initPromise: Promise<void> | null = null;
-let authListenersRegistered = false;
 
 function initAuthSingleton(): Promise<void> {
   if (initPromise) return initPromise;
@@ -196,44 +185,8 @@ async function doInit() {
   }
 
   listeners.forEach((fn) => fn());
-
-  // Register auth listeners ONLY for SIGNED_OUT detection
-  registerAuthListeners();
-}
-
-// ═══════════════════════════════════════════════════════════
-// AUTH LISTENERS: ONLY for SIGNED_OUT
-//
-// Login detection is handled by setSession() (called from
-// loginWithRoundRobin). We do NOT handle SIGNED_IN here
-// because it fires synchronously during onAuthStateChange
-// registration and causes infinite re-render loops (#310).
-//
-// onAuthStateChange events:
-// - INITIAL_SESSION: fires synchronously on registration → IGNORE
-// - SIGNED_IN: handled by setSession() in api-login → IGNORE
-// - TOKEN_REFRESHED: client handles internally → IGNORE
-// - SIGNED_OUT: user logged out or session expired → HANDLE
-// ═══════════════════════════════════════════════════════════
-
-function registerAuthListeners() {
-  if (authListenersRegistered) return;
-  authListenersRegistered = true;
-
-  for (const p of [1, 2] as const) {
-    const config = getProjectConfig(p);
-    if (!config.url || !config.anonKey) continue;
-    const client = createLoginClient(config);
-
-    client.auth.onAuthStateChange((event, _session) => {
-      // ONLY handle SIGNED_OUT from the active project
-      if (event === "SIGNED_OUT" && snapshot.project === p) {
-        clearSession();
-      }
-      // ALL other events are intentionally ignored here.
-      // SIGNED_IN is handled by setSession() called from loginWithRoundRobin.
-    });
-  }
+  // NOTE: We deliberately do NOT register onAuthStateChange here.
+  // See the comment at the top of this file for the reason.
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -241,16 +194,12 @@ function registerAuthListeners() {
 // ═══════════════════════════════════════════════════════════
 
 export function useSession(): UseSessionResult {
-  // useSyncExternalStore: React-blessed way to subscribe to external state.
-  // Prevents infinite re-renders by comparing snapshot references.
   const session = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   // Trigger init on first mount
-  useEffect(() => {
-    initAuthSingleton();
-  }, []);
+  useEffect(() => { initAuthSingleton(); }, []);
 
-  // Profile management (separate from session snapshot)
+  // Profile management
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const profileFetchRef = useRef<string | false>(false);
