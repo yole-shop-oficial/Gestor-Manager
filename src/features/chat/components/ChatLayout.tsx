@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "@/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
@@ -13,89 +14,123 @@ import { ChatSidebar } from "./ChatSidebar";
 import { ChatWindow } from "./ChatWindow";
 import type { ChatMessage } from "../types";
 
+const GLOBAL_CONV_ID = "00000000-0000-0000-0000-000000000001";
+
 export function ChatLayout() {
   const { user, client, project, profile, isAdmin } = useSession();
   const queryClient = useQueryClient();
   const userId = user?.id ?? "";
+  const userRole = profile?.role || "gestor";
+  const userLevel = profile?.level || 0;
 
-  const { conversations, isLoading: convsLoading } = useConversations();
+  const { conversations, contacts, isLoading: convsLoading } = useConversations();
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const { messages, isLoading: msgsLoading, fetchOlder, hasOlder, fetchingOlder } = useMessages(activeConvId);
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
-  // ─── Find or create private conversation with admin ───
-  const findOrCreatePrivateConv = useCallback(async (otherUserId: string) => {
+  // ─── Create or find private conversation ───
+  const ensurePrivateConv = useCallback(async (otherUserId: string) => {
     if (!client || !project || !user) return null;
 
-    const config = getProjectConfig(project);
-    const supabase = client || createLoginClient(config);
+    // Special: "__admin__" → find the actual admin
+    let targetId = otherUserId;
+    if (otherUserId === "__admin__") {
+      const config = getProjectConfig(project);
+      const supabase = client || createLoginClient(config);
+      const { data: adminProfile } = await supabase
+        .from("profiles").select("id").eq("role", "admin").limit(1).single();
+      if (!adminProfile) return null;
+      targetId = adminProfile.id;
+    }
 
-    // Check if conversation already exists
-    const { data: existingMemberships } = await supabase
-      .from("conversation_members")
-      .select("conversation_id")
-      .eq("user_id", userId);
+    // Check existing private conversation
+    const supabase = client || createLoginClient(getProjectConfig(project));
 
-    if (existingMemberships && existingMemberships.length > 0) {
-      const convIds = existingMemberships.map((m) => m.conversation_id);
+    const { data: myMemberships } = await supabase
+      .from("conversation_members").select("conversation_id").eq("user_id", userId);
 
-      // Check which conversation also has the other user
-      for (const convId of convIds) {
+    if (myMemberships) {
+      for (const m of myMemberships) {
         const { data: otherMember } = await supabase
           .from("conversation_members")
-          .select("conversation_id")
-          .eq("conversation_id", convId)
-          .eq("user_id", otherUserId)
-          .limit(1);
-
-        if (otherMember && otherMember.length > 0) {
-          // Check it's a private conversation
+          .select("conversation_id").eq("conversation_id", m.conversation_id).eq("user_id", targetId).limit(1);
+        if (otherMember?.length) {
           const { data: conv } = await supabase
-            .from("conversations")
-            .select("id, type")
-            .eq("id", convId)
-            .single();
-
-          if (conv && conv.type === "private") {
-            return conv.id;
-          }
+            .from("conversations").select("id, type").eq("id", m.conversation_id).single();
+          if (conv?.type === "private") return conv.id;
         }
       }
     }
 
-    // Create new conversation
-    const { data: newConv, error: convErr } = await supabase
-      .from("conversations")
-      .insert([{ type: "private", created_by: userId }])
-      .select("id")
-      .single();
+    // Create new private conversation
+    const { data: newConv } = await supabase
+      .from("conversations").insert([{ type: "private", created_by: userId }]).select("id").single();
+    if (!newConv) return null;
 
-    if (convErr || !newConv) return null;
-
-    // Add both members
     await supabase.from("conversation_members").insert([
       { conversation_id: newConv.id, user_id: userId },
-      { conversation_id: newConv.id, user_id: otherUserId },
+      { conversation_id: newConv.id, user_id: targetId },
     ]);
 
-    // Invalidate conversations cache
-    queryClient.invalidateQueries({ queryKey: ["conversations", userId] });
-
+    queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
     return newConv.id;
   }, [client, project, user, userId, queryClient]);
+
+  // ─── Open chat with a contact ───
+  const startChatWith = useCallback(async (otherUserId: string) => {
+    if (otherUserId === GLOBAL_CONV_ID) {
+      setActiveConvId(GLOBAL_CONV_ID);
+      return;
+    }
+
+    // Check if global chat
+    const globalConv = conversations.find(c => c.type === "global");
+    if (otherUserId === "__global__" && globalConv) {
+      setActiveConvId(globalConv.id);
+      return;
+    }
+
+    const convId = await ensurePrivateConv(otherUserId);
+    if (convId) setActiveConvId(convId);
+  }, [conversations, ensurePrivateConv]);
+
+  // ─── Auto-ensure global conversation exists ───
+  useEffect(() => {
+    if (!client || !project || !userId) return;
+    if (conversations.find(c => c.type === "global")) return;
+
+    (async () => {
+      const supabase = client || createLoginClient(getProjectConfig(project));
+      const { data: global } = await supabase
+        .from("conversations").select("id").eq("id", GLOBAL_CONV_ID).single();
+      if (!global) {
+        // Create global chat if doesn't exist
+        await supabase.from("conversations").insert([{
+          id: GLOBAL_CONV_ID, type: "global", name: "Chat Global", created_by: userId
+        }]);
+      }
+      // Add current user to global chat
+      const { data: member } = await supabase
+        .from("conversation_members")
+        .select("conversation_id").eq("conversation_id", GLOBAL_CONV_ID).eq("user_id", userId).limit(1);
+      if (!member?.length) {
+        await supabase.from("conversation_members").insert([{
+          conversation_id: GLOBAL_CONV_ID, user_id: userId
+        }]);
+      }
+      queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
+    })();
+  }, [client, project, userId, conversations, queryClient]);
 
   // ─── Send message ───
   const [sending, setSending] = useState(false);
   const [spamError, setSpamError] = useState<string | null>(null);
-  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
 
-  const sendMessage = useCallback(async (body: string, conversationId: string) => {
-    if (!user || !client || !project) return;
+  const sendMessage = useCallback(async (body: string) => {
+    if (!user || !client || !project || !activeConvId) return;
     if (!body.trim()) return;
 
-    // Anti-spam check (stricter for global chat)
-    const conv = conversations.find((c) => c.id === conversationId);
     const spamCheck = checkSpam(userId, body.trim());
     if (!spamCheck.allowed) {
       setSpamError(spamCheck.reason || "Espera antes de enviar");
@@ -103,7 +138,6 @@ export function ChatLayout() {
       return;
     }
 
-    // Security: sanitize message to prevent XSS
     const sanitizedBody = sanitizeMessage(body.trim());
     if (containsDangerousContent(body.trim())) {
       setSpamError("El mensaje contiene contenido no permitido");
@@ -114,135 +148,91 @@ export function ChatLayout() {
     setSpamError(null);
     setSending(true);
 
-    // Optimistic message
-    const optimisticMsg: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      sender_id: user.id,
-      recipient_id: "", // Will be filled by server
-      body: sanitizedBody,
-      read_at: null,
-      created_at: new Date().toISOString(),
-      conversation_id: conversationId,
-    };
-    setOptimisticMessages((prev) => [...prev, optimisticMsg]);
-
     try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
+      const supabase = client || createLoginClient(getProjectConfig(project));
 
       const insertData: Record<string, unknown> = {
         sender_id: user.id,
         body: sanitizedBody,
-        conversation_id: conversationId,
+        conversation_id: activeConvId,
       };
 
-      // If private conv without recipient_id, find it
+      // Find recipient for private conversations
+      const conv = conversations.find(c => c.id === activeConvId);
       if (conv?.type === "private") {
         const { data: members } = await supabase
-          .from("conversation_members")
-          .select("user_id")
-          .eq("conversation_id", conversationId)
-          .neq("user_id", user.id)
-          .limit(1);
-
-        if (members && members.length > 0) {
-          insertData.recipient_id = members[0].user_id;
-        }
+          .from("conversation_members").select("user_id")
+          .eq("conversation_id", activeConvId).neq("user_id", user.id).limit(1);
+        insertData.recipient_id = members?.[0]?.user_id || user.id;
       } else {
-        // For global/group, recipient_id = sender_id (self, since it's a group)
         insertData.recipient_id = user.id;
       }
 
-      const { error } = await supabase
-        .from("messages")
-        .insert([insertData]);
+      const { error } = await supabase.from("messages").insert([insertData]);
 
-      if (error) {
-        logger.error("chat_send_failed", { conversationId, error: error.message });
-        setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-      } else {
+      if (!error) {
         recordMessage(userId, sanitizedBody);
-        setOptimisticMessages([]);
+        // Update conversation last_message
+        await supabase.from("conversations").update({
+          last_message_at: new Date().toISOString(),
+          last_message_preview: sanitizedBody.slice(0, 100),
+        }).eq("id", activeConvId);
+        queryClient.invalidateQueries({ queryKey: ["messages", activeConvId] });
+        queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
+      } else {
+        logger.error("chat_send_failed", { conversationId: activeConvId, error: error.message });
       }
     } catch (err: any) {
-      logger.error("chat_send_exception", { conversationId, error: err?.message || String(err) });
-      setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      logger.error("chat_send_exception", { conversationId: activeConvId, error: err?.message || String(err) });
     } finally {
       setSending(false);
     }
-  }, [user, client, project, userId, conversations]);
+  }, [user, client, project, userId, activeConvId, conversations, queryClient]);
 
-  // ─── Auto-open admin chat for gestors ───
-  const openAdminChat = useCallback(async () => {
-    if (!profile) return;
-
-    // Find existing private conv with admin
-    const adminConv = conversations.find((c) => c.type === "private");
-    if (adminConv) {
-      setActiveConvId(adminConv.id);
-      return;
-    }
-
-    // Need to find admin ID and create conversation
-    if (!client || !project) return;
-    const config = getProjectConfig(project);
-    const supabase = client || createLoginClient(config);
-
-    const { data: adminProfile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "admin")
-      .limit(1)
-      .single();
-
-    if (adminProfile) {
-      const convId = await findOrCreatePrivateConv(adminProfile.id);
-      if (convId) setActiveConvId(convId);
-    }
-  }, [profile, conversations, client, project, findOrCreatePrivateConv]);
-
-  // Combine server + optimistic messages
-  const allMessages = [
-    ...messages,
-    ...optimisticMessages.filter(
-      (om) => !messages.some((sm) => sm.id === om.id)
-    ),
-  ];
-
-  // Mobile: show sidebar when no conversation, window when active
-  // Desktop: show both
+  // Mobile: toggle between sidebar and window
   const showSidebar = !activeConvId;
   const showWindow = !!activeConvId;
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {showSidebar && (
-        <ChatSidebar
-          conversations={conversations}
-          activeConvId={activeConvId}
-          onSelect={setActiveConvId}
-          onOpenAdminChat={openAdminChat}
-          isLoading={convsLoading}
-          isAdmin={isAdmin}
-          userId={userId}
-        />
-      )}
-      {showWindow && activeConvId && (
-        <ChatWindow
-          conversation={activeConv || null}
-          messages={allMessages}
-          onSend={(body) => sendMessage(body, activeConvId)}
-          onBack={() => setActiveConvId(null)}
-          sending={sending}
-          spamError={spamError}
-          isLoading={msgsLoading}
-          userId={userId}
-          profile={profile}
-          fetchOlder={fetchOlder}
-          hasOlder={hasOlder}
-          fetchingOlder={fetchingOlder}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        {showSidebar && (
+          <motion.div key="sidebar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="h-full">
+            <ChatSidebar
+              conversations={conversations}
+              contacts={contacts}
+              activeConvId={activeConvId}
+              onSelect={setActiveConvId}
+              onStartChat={startChatWith}
+              isLoading={convsLoading}
+              isAdmin={isAdmin}
+              userId={userId}
+              userRole={userRole}
+              userLevel={userLevel}
+            />
+          </motion.div>
+        )}
+        {showWindow && activeConvId && (
+          <motion.div key="window" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="h-full">
+            <ChatWindow
+              conversation={activeConv || null}
+              messages={messages}
+              onSend={sendMessage}
+              onBack={() => setActiveConvId(null)}
+              sending={sending}
+              spamError={spamError}
+              isLoading={msgsLoading}
+              userId={userId}
+              profile={profile}
+              fetchOlder={fetchOlder}
+              hasOlder={hasOlder}
+              fetchingOlder={fetchingOlder}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
