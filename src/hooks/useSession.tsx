@@ -24,7 +24,7 @@ import { logger } from "@/lib/logger";
 // TYPES — Same API as before, no breaking changes
 // ═══════════════════════════════════════════════════════════════
 
-export type UserRole = "admin" | "gestor" | "moderator";
+export type UserRole = "admin" | "manager" | "gestor" | "moderator";
 export type UserStatus = "pending" | "active" | "denied" | "blocked";
 
 export interface UserProfile {
@@ -45,6 +45,15 @@ export interface UserProfile {
   gender: string;
   age: number;
   observations: string;
+  // ─── v3.0 Árbol Comercial ───
+  manager_code?: string;
+  parent_id?: string;
+  level?: number;
+  path?: string;
+  children_count?: number;
+  total_network_size?: number;
+  avatar_url?: string;
+  last_seen_at?: string;
 }
 
 export interface UseSessionResult {
