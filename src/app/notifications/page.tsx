@@ -81,7 +81,7 @@ function NotificationsContent() {
     staleTime: 30_000,
   });
 
-  // ─── Single realtime channel for notifications (all events, filtered by user) ───
+  // ─── Single realtime channel for notifications ───
   useRealtime({
     channel: `notifs-${userId}`,
     table: "notifications",
@@ -92,6 +92,15 @@ function NotificationsContent() {
     },
     enabled: !!userId,
   });
+
+  // Polling fallback: refresh notifications every 45s if Realtime fails
+  useEffect(() => {
+    if (!userId) return;
+    const interval = setInterval(() => {
+      invalidate.notifications(queryClient, userId);
+    }, 45_000);
+    return () => clearInterval(interval);
+  }, [userId, queryClient]);
 
   // ─── Infinite scroll via IntersectionObserver ───
   const loadMoreRef = useRef<HTMLDivElement>(null);

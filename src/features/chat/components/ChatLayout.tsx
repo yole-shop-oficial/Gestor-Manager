@@ -33,48 +33,66 @@ export function ChatLayout() {
   const ensurePrivateConv = useCallback(async (otherUserId: string) => {
     if (!client || !project || !user) return null;
 
-    // Special: "__admin__" → find the actual admin
-    let targetId = otherUserId;
-    if (otherUserId === "__admin__") {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
-      const { data: adminProfile } = await supabase
-        .from("profiles").select("id").eq("role", "admin").limit(1).single();
-      if (!adminProfile) return null;
-      targetId = adminProfile.id;
-    }
+    try {
+      // Special: "__admin__" → find the actual admin
+      let targetId = otherUserId;
+      if (otherUserId === "__admin__") {
+        const config = getProjectConfig(project);
+        const supabase = client || createLoginClient(config);
+        const { data: adminProfile, error: adminErr } = await supabase
+          .from("profiles").select("id").eq("role", "admin").limit(1).maybeSingle();
+        if (!adminProfile || adminErr) return null;
+        targetId = adminProfile.id;
+      }
 
-    // Check existing private conversation
-    const supabase = client || createLoginClient(getProjectConfig(project));
+      const supabase = client || createLoginClient(getProjectConfig(project));
 
-    const { data: myMemberships } = await supabase
-      .from("conversation_members").select("conversation_id").eq("user_id", userId);
+      // Check existing private conversation
+      const { data: myMemberships, error: memErr } = await supabase
+        .from("conversation_members").select("conversation_id").eq("user_id", userId);
+      
+      if (memErr) {
+        console.warn("[Chat] Error finding memberships:", memErr.message);
+        return null;
+      }
 
-    if (myMemberships) {
-      for (const m of myMemberships) {
-        const { data: otherMember } = await supabase
-          .from("conversation_members")
-          .select("conversation_id").eq("conversation_id", m.conversation_id).eq("user_id", targetId).limit(1);
-        if (otherMember?.length) {
-          const { data: conv } = await supabase
-            .from("conversations").select("id, type").eq("id", m.conversation_id).single();
-          if (conv?.type === "private") return conv.id;
+      if (myMemberships) {
+        for (const m of myMemberships) {
+          const { data: otherMember } = await supabase
+            .from("conversation_members")
+            .select("conversation_id").eq("conversation_id", m.conversation_id).eq("user_id", targetId).maybeSingle();
+          if (otherMember) {
+            const { data: conv } = await supabase
+              .from("conversations").select("id, type").eq("id", m.conversation_id).maybeSingle();
+            if (conv?.type === "private") return conv.id;
+          }
         }
       }
+
+      // Create new private conversation
+      const { data: newConv, error: createErr } = await supabase
+        .from("conversations").insert([{ type: "private", created_by: userId }]).select("id").single();
+      
+      if (createErr || !newConv) {
+        console.warn("[Chat] Error creating private conversation:", createErr?.message);
+        return null;
+      }
+
+      const { error: addErr } = await supabase.from("conversation_members").insert([
+        { conversation_id: newConv.id, user_id: userId },
+        { conversation_id: newConv.id, user_id: targetId },
+      ]);
+      
+      if (addErr) {
+        console.warn("[Chat] Error adding members:", addErr.message);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
+      return newConv.id;
+    } catch (err: any) {
+      console.warn("[Chat] ensurePrivateConv failed:", err?.message || err);
+      return null;
     }
-
-    // Create new private conversation
-    const { data: newConv } = await supabase
-      .from("conversations").insert([{ type: "private", created_by: userId }]).select("id").single();
-    if (!newConv) return null;
-
-    await supabase.from("conversation_members").insert([
-      { conversation_id: newConv.id, user_id: userId },
-      { conversation_id: newConv.id, user_id: targetId },
-    ]);
-
-    queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
-    return newConv.id;
   }, [client, project, user, userId, queryClient]);
 
   // ─── Open chat with a contact ───
@@ -96,32 +114,57 @@ export function ChatLayout() {
   }, [conversations, ensurePrivateConv]);
 
   // ─── Auto-ensure global conversation exists ───
+  const globalSetupDone = useRef(false);
   useEffect(() => {
     if (!client || !project || !userId) return;
-    if (conversations.find(c => c.type === "global")) return;
+    if (globalSetupDone.current) return;
+    if (convsLoading) return; // Wait for conversations to load first
 
+    // Check if global already exists in loaded conversations
+    if (conversations.find(c => c.type === "global")) {
+      globalSetupDone.current = true;
+      return;
+    }
+
+    globalSetupDone.current = true;
     (async () => {
-      const supabase = client || createLoginClient(getProjectConfig(project));
-      const { data: global } = await supabase
-        .from("conversations").select("id").eq("id", GLOBAL_CONV_ID).single();
-      if (!global) {
-        // Create global chat if doesn't exist
-        await supabase.from("conversations").insert([{
-          id: GLOBAL_CONV_ID, type: "global", name: "Chat Global", created_by: userId
-        }]);
+      try {
+        const supabase = client || createLoginClient(getProjectConfig(project));
+        // Try to find existing global conversation
+        const { data: global } = await supabase
+          .from("conversations").select("id").eq("id", GLOBAL_CONV_ID).maybeSingle();
+        
+        if (!global) {
+          // Create global chat — ignore if it already exists (409 conflict)
+          const { error: createErr } = await supabase.from("conversations").insert([{
+            id: GLOBAL_CONV_ID, type: "global", name: "Chat Global", created_by: userId
+          }]);
+          // 409 = already exists, which is fine
+          if (createErr && !createErr.message?.includes("duplicate")) {
+            console.warn("[Chat] Could not create global conversation:", createErr.message);
+          }
+        }
+
+        // Add current user to global chat — ignore if already member
+        const { data: member } = await supabase
+          .from("conversation_members")
+          .select("conversation_id").eq("conversation_id", GLOBAL_CONV_ID).eq("user_id", userId).maybeSingle();
+        
+        if (!member) {
+          const { error: memberErr } = await supabase.from("conversation_members").insert([{
+            conversation_id: GLOBAL_CONV_ID, user_id: userId
+          }]);
+          if (memberErr && !memberErr.message?.includes("duplicate")) {
+            console.warn("[Chat] Could not join global conversation:", memberErr.message);
+          }
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
+      } catch (err: any) {
+        console.warn("[Chat] Global conversation setup failed (non-critical):", err?.message || err);
       }
-      // Add current user to global chat
-      const { data: member } = await supabase
-        .from("conversation_members")
-        .select("conversation_id").eq("conversation_id", GLOBAL_CONV_ID).eq("user_id", userId).limit(1);
-      if (!member?.length) {
-        await supabase.from("conversation_members").insert([{
-          conversation_id: GLOBAL_CONV_ID, user_id: userId
-        }]);
-      }
-      queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
     })();
-  }, [client, project, userId, conversations, queryClient]);
+  }, [client, project, userId, conversations, convsLoading, queryClient]);
 
   // ─── Send message ───
   const [sending, setSending] = useState(false);

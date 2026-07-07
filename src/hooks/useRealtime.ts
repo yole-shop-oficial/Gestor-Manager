@@ -90,13 +90,15 @@ export function useRealtime(config: UseRealtimeConfig): void {
           onEventRef.current(payload);
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         if (status === "SUBSCRIBED") {
           console.log(`[REALTIME] ✅ ${channelName} connected`);
         } else if (status === "CHANNEL_ERROR") {
-          console.warn(`[REALTIME] ❌ ${channelName} error`);
+          console.warn(`[REALTIME] ❌ ${channelName} error:`, err?.message || "unknown");
         } else if (status === "TIMED_OUT") {
           console.warn(`[REALTIME] ⏰ ${channelName} timed out`);
+        } else if (status === "CLOSED") {
+          console.warn(`[REALTIME] 🔒 ${channelName} closed`);
         }
       });
 
@@ -117,7 +119,7 @@ export function useRealtime(config: UseRealtimeConfig): void {
           console.log(`[REALTIME] 🗑️ ${channelName} removed (no subscribers)`);
         }
       } else {
-        supabase.removeChannel(channel);
+        try { supabase.removeChannel(channel); } catch {}
       }
     };
     // ONLY the stableKey string in deps — NO object references
