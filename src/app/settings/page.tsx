@@ -22,8 +22,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   LogOut,
+  RefreshCw,
 } from "lucide-react";
 import { clearUserProject } from "@/services/supabase/roundRobin";
+import { resetSetup, clearAllAppCache } from "@/features/setup/settings";
 
 export default function SettingsPage() {
   return (
@@ -260,6 +262,23 @@ function SettingsContent() {
           </div>
         </motion.div>
       ))}
+
+      {/* Resetear configuración (activa el setup bot de nuevo) */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+        <button
+          onClick={async () => {
+            if (confirm("¿Resetear la configuración de la app? Se ejecutará el asistente de configuración de nuevo.")) {
+              resetSetup();
+              await clearAllAppCache();
+              window.location.href = "/setup";
+            }
+          }}
+          className="w-full p-4 rounded-[20px] bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-600 dark:text-orange-400 font-bold text-sm flex items-center justify-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Reconfigurar aplicación
+        </button>
+      </motion.div>
 
       {/* Cerrar sesión */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
