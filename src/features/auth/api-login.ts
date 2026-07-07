@@ -1,6 +1,6 @@
 "use client";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import {
   getProjectConfig,
   createLoginClient,
@@ -9,6 +9,7 @@ import {
   type SelectedProject,
 } from "@/services/supabase/roundRobin";
 import { checkRateLimit } from "@/lib/rate-limiter";
+import { setSession } from "@/hooks/useSession";
 
 /**
  * Inicia sesión buscando al usuario en ambos proyectos (round-robin).
@@ -17,6 +18,7 @@ import { checkRateLimit } from "@/lib/rate-limiter";
  * 1. Si ya sabemos en qué proyecto está (localStorage), intentar ahí primero
  * 2. Si no sabemos, intentar Proyecto 1, luego Proyecto 2
  * 3. Guardar el proyecto correcto en localStorage para futuros logins
+ * 4. Actualizar el session singleton directamente (sin depender de onAuthStateChange)
  */
 export async function loginWithRoundRobin(
   email: string,
@@ -33,7 +35,9 @@ export async function loginWithRoundRobin(
 
   if (savedProject) {
     const result = await tryLogin(savedProject, email, password);
-    if (result.success) {
+    if (result.success && result.user && result.client) {
+      // Directly update session singleton — no onAuthStateChange dependency
+      setSession(result.user, result.client, savedProject);
       return { error: null, project: savedProject };
     }
     // Si falla con credenciales incorrectas (no error de conexión), no reintentar
@@ -44,20 +48,20 @@ export async function loginWithRoundRobin(
 
   // ─── Intentar Proyecto 1 ───
   const result1 = await tryLogin(1, email, password);
-  if (result1.success) {
+  if (result1.success && result1.user && result1.client) {
     saveUserProject(1);
+    setSession(result1.user, result1.client, 1);
     return { error: null, project: 1 };
   }
   if (result1.isAuthError && !result1.isConnectionError) {
-    // El usuario existe en Proyecto 1 pero contraseña incorrecta
-    // No reintentar en Proyecto 2 porque un email solo puede estar en un proyecto
     return { error: result1.error!, project: null };
   }
 
   // ─── Intentar Proyecto 2 ───
   const result2 = await tryLogin(2, email, password);
-  if (result2.success) {
+  if (result2.success && result2.user && result2.client) {
     saveUserProject(2);
+    setSession(result2.user, result2.client, 2);
     return { error: null, project: 2 };
   }
   if (result2.isAuthError && !result2.isConnectionError) {
@@ -76,6 +80,8 @@ interface TryLoginResult {
   error: string | null;
   isAuthError: boolean;
   isConnectionError: boolean;
+  user?: User | null;
+  client?: SupabaseClient | null;
 }
 
 async function tryLogin(
@@ -96,7 +102,7 @@ async function tryLogin(
     }
 
     const client = createLoginClient(config);
-    const { error: authError } = await client.auth.signInWithPassword({
+    const { data, error: authError } = await client.auth.signInWithPassword({
       email,
       password,
     });
@@ -104,14 +110,12 @@ async function tryLogin(
     if (authError) {
       const msg = authError.message.toLowerCase();
 
-      // Errores de credenciales (el usuario existe pero falló)
       const isCredentialError =
         msg.includes("invalid login credentials") ||
         msg.includes("invalid password") ||
         msg.includes("email not confirmed") ||
         msg.includes("user not found");
 
-      // Errores de conexión
       const isConnectionError =
         msg.includes("fetch") ||
         msg.includes("network") ||
@@ -137,12 +141,14 @@ async function tryLogin(
       };
     }
 
-    // Login exitoso - también guardar sesión en el cliente global
+    // Login exitoso — return user and client so caller can update singleton
     return {
       success: true,
       error: null,
       isAuthError: false,
       isConnectionError: false,
+      user: data.user,
+      client,
     };
   } catch (e: any) {
     return {

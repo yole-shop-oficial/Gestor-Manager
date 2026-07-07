@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useSyncExternalStore, useState, useEffect, useCallback, useRef } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -53,6 +53,82 @@ export interface UseSessionResult {
 }
 
 // ═══════════════════════════════════════════════════════════
+// SESSION STATE (immutable snapshot pattern for useSyncExternalStore)
+//
+// Key insight: useSyncExternalStore compares snapshots with Object.is().
+// We MUST create a new object reference ONLY when state actually changes.
+// This prevents React from re-rendering when nothing changed.
+// ═══════════════════════════════════════════════════════════
+
+interface SessionSnapshot {
+  user: User | null;
+  client: SupabaseClient | null;
+  project: 1 | 2 | null;
+  loading: boolean;
+  version: number; // incremented on each change for reliable comparison
+}
+
+let snapshot: SessionSnapshot = {
+  user: null,
+  client: null,
+  project: null,
+  loading: true,
+  version: 0,
+};
+
+// ═══════════════════════════════════════════════════════════
+// LISTENERS (for useSyncExternalStore subscribe/unsubscribe)
+// ═══════════════════════════════════════════════════════════
+
+const listeners = new Set<() => void>();
+
+function emitChange() {
+  snapshot = { ...snapshot, version: snapshot.version + 1 };
+  listeners.forEach((fn) => fn());
+}
+
+function subscribe(callback: () => void): () => void {
+  listeners.add(callback);
+  return () => listeners.delete(callback);
+}
+
+function getSnapshot(): SessionSnapshot {
+  return snapshot;
+}
+
+function getServerSnapshot(): SessionSnapshot {
+  return { user: null, client: null, project: null, loading: true, version: 0 };
+}
+
+// ═══════════════════════════════════════════════════════════
+// PUBLIC: Set session (called by loginWithRoundRobin after login)
+// ═══════════════════════════════════════════════════════════
+
+export function setSession(user: User, client: SupabaseClient, project: 1 | 2): void {
+  // Skip if already set to same values
+  if (snapshot.user?.id === user.id && snapshot.project === project && !snapshot.loading) {
+    return;
+  }
+  snapshot = { user, client, project, loading: false, version: snapshot.version + 1 };
+  saveUserProject(project);
+  logger.setUser(user.id, project);
+  listeners.forEach((fn) => fn());
+}
+
+// ═══════════════════════════════════════════════════════════
+// PUBLIC: Clear session (called on logout)
+// ═══════════════════════════════════════════════════════════
+
+export function clearSession(): void {
+  if (snapshot.user === null && !snapshot.loading) return;
+  snapshot = { user: null, client: null, project: null, loading: false, version: snapshot.version + 1 };
+  profileCache.clear();
+  logger.setUser(null, null);
+  logger.flush();
+  listeners.forEach((fn) => fn());
+}
+
+// ═══════════════════════════════════════════════════════════
 // PROFILE CACHE
 // ═══════════════════════════════════════════════════════════
 
@@ -73,86 +149,11 @@ function setCachedProfile(userId: string, profile: UserProfile): void {
 function clearCachedProfile(userId: string): void { profileCache.delete(userId); }
 
 // ═══════════════════════════════════════════════════════════
-// SINGLETON STATE
+// INIT: Check for existing session (runs ONCE via promise guard)
 // ═══════════════════════════════════════════════════════════
 
-let singletonUser: User | null = null;
-let singletonClient: SupabaseClient | null = null;
-let singletonProject: 1 | 2 | null = null;
-let singletonLoading = true;
-
-// Notification system
-const listeners = new Set<() => void>();
-let lastNotifyTime = 0;
-const NOTIFY_THROTTLE_MS = 100;
-
-function notifyListeners() {
-  const now = Date.now();
-  if (now - lastNotifyTime < NOTIFY_THROTTLE_MS) return; // throttle
-  lastNotifyTime = now;
-  listeners.forEach((fn) => fn());
-}
-
-// Init guard
 let initPromise: Promise<void> | null = null;
-let authListenersReady = false;
-
-// ═══════════════════════════════════════════════════════════
-// AUTH LISTENER: Only responds to SIGNED_IN and SIGNED_OUT
-//
-// This is the key fix. Supabase onAuthStateChange fires many events:
-// - INITIAL_SESSION: fires synchronously on registration (causes loops)
-// - TOKEN_REFRESHED: fires periodically (no user change needed)
-// - SIGNED_IN: fires on actual login (THIS is what we need)
-// - SIGNED_OUT: fires on logout (THIS is what we need)
-//
-// By filtering to ONLY SIGNED_IN and SIGNED_OUT, we avoid
-// the infinite re-render caused by INITIAL_SESSION firing
-// synchronously and triggering notifyListeners() → re-render
-// → another event → another notifyListeners() → loop.
-// ═══════════════════════════════════════════════════════════
-
-function registerAuthListeners() {
-  if (authListenersReady) return;
-  authListenersReady = true;
-
-  for (const p of [1, 2] as const) {
-    const config = getProjectConfig(p);
-    if (!config.url || !config.anonKey) continue;
-    const client = createLoginClient(config);
-
-    client.auth.onAuthStateChange((event, session) => {
-      // ═══ CRITICAL: Only handle real auth state changes ═══
-      if (event === "SIGNED_IN" && session?.user) {
-        const newUserId = session.user.id;
-        // Dedup: skip if same user on same project
-        if (singletonUser?.id === newUserId && singletonProject === p) return;
-        singletonUser = session.user;
-        singletonClient = client;
-        singletonProject = p;
-        singletonLoading = false;
-        saveUserProject(p);
-        logger.setUser(session.user.id, p);
-        notifyListeners();
-      } else if (event === "SIGNED_OUT" && singletonProject === p) {
-        // Only clear if signing out from the ACTIVE project
-        singletonUser = null;
-        singletonClient = null;
-        singletonProject = null;
-        singletonLoading = false;
-        profileCache.clear();
-        logger.setUser(null, null);
-        logger.flush();
-        notifyListeners();
-      }
-      // Ignore: INITIAL_SESSION, TOKEN_REFRESHED, PASSWORD_RECOVERY, etc.
-    });
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// INIT: Check for existing session (runs ONCE)
-// ═══════════════════════════════════════════════════════════
+let authListenersRegistered = false;
 
 function initAuthSingleton(): Promise<void> {
   if (initPromise) return initPromise;
@@ -188,22 +189,51 @@ async function doInit() {
   }
 
   if (result) {
-    singletonUser = result.user;
-    singletonClient = result.client;
-    singletonProject = result.project;
+    snapshot = { user: result.user, client: result.client, project: result.project, loading: false, version: snapshot.version + 1 };
     logger.setUser(result.user.id, result.project);
   } else {
-    singletonUser = null;
-    singletonClient = null;
-    singletonProject = null;
+    snapshot = { user: null, client: null, project: null, loading: false, version: snapshot.version + 1 };
   }
 
-  singletonLoading = false;
-  notifyListeners();
+  listeners.forEach((fn) => fn());
 
-  // Always register auth listeners AFTER setting initial state
-  // so that INITIAL_SESSION events are properly deduped
+  // Register auth listeners ONLY for SIGNED_OUT detection
   registerAuthListeners();
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTH LISTENERS: ONLY for SIGNED_OUT
+//
+// Login detection is handled by setSession() (called from
+// loginWithRoundRobin). We do NOT handle SIGNED_IN here
+// because it fires synchronously during onAuthStateChange
+// registration and causes infinite re-render loops (#310).
+//
+// onAuthStateChange events:
+// - INITIAL_SESSION: fires synchronously on registration → IGNORE
+// - SIGNED_IN: handled by setSession() in api-login → IGNORE
+// - TOKEN_REFRESHED: client handles internally → IGNORE
+// - SIGNED_OUT: user logged out or session expired → HANDLE
+// ═══════════════════════════════════════════════════════════
+
+function registerAuthListeners() {
+  if (authListenersRegistered) return;
+  authListenersRegistered = true;
+
+  for (const p of [1, 2] as const) {
+    const config = getProjectConfig(p);
+    if (!config.url || !config.anonKey) continue;
+    const client = createLoginClient(config);
+
+    client.auth.onAuthStateChange((event, _session) => {
+      // ONLY handle SIGNED_OUT from the active project
+      if (event === "SIGNED_OUT" && snapshot.project === p) {
+        clearSession();
+      }
+      // ALL other events are intentionally ignored here.
+      // SIGNED_IN is handled by setSession() called from loginWithRoundRobin.
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -211,32 +241,33 @@ async function doInit() {
 // ═══════════════════════════════════════════════════════════
 
 export function useSession(): UseSessionResult {
-  const [, forceUpdate] = useState(0);
+  // useSyncExternalStore: React-blessed way to subscribe to external state.
+  // Prevents infinite re-renders by comparing snapshot references.
+  const session = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
+  // Trigger init on first mount
+  useEffect(() => {
+    initAuthSingleton();
+  }, []);
+
+  // Profile management (separate from session snapshot)
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const profileFetchRef = useRef<string | false>(false);
 
   useEffect(() => {
-    const update = () => forceUpdate((n) => n + 1);
-    listeners.add(update);
-    initAuthSingleton();
-    return () => { listeners.delete(update); };
-  }, []);
-
-  // Fetch profile when user becomes available
-  useEffect(() => {
-    if (!singletonUser || !singletonClient) {
+    if (!session.user || !session.client) {
       setProfile(null);
       setProfileLoading(false);
       profileFetchRef.current = false;
       return;
     }
 
-    const currentUserId = singletonUser.id;
+    const currentUserId = session.user.id;
     if (profileFetchRef.current === currentUserId) return;
     profileFetchRef.current = currentUserId;
 
-    const cached = getCachedProfile(singletonUser.id);
+    const cached = getCachedProfile(currentUserId);
     if (cached) {
       setProfile(cached);
       setProfileLoading(false);
@@ -246,7 +277,7 @@ export function useSession(): UseSessionResult {
     let cancelled = false;
     setProfileLoading(true);
 
-    singletonClient
+    session.client
       .from("profiles")
       .select("*")
       .eq("id", currentUserId)
@@ -264,11 +295,11 @@ export function useSession(): UseSessionResult {
       });
 
     return () => { cancelled = true; };
-  }, [singletonUser?.id, singletonClient]);
+  }, [session.user?.id, session.client]);
 
   const refreshProfile = useCallback(async () => {
-    const userId = singletonUser?.id;
-    const client = singletonClient;
+    const userId = session.user?.id;
+    const client = session.client;
     if (!userId || !client) return;
     clearCachedProfile(userId);
     setProfileLoading(true);
@@ -286,14 +317,14 @@ export function useSession(): UseSessionResult {
     } finally {
       setProfileLoading(false);
     }
-  }, []);
+  }, [session.user?.id, session.client]);
 
   return {
-    user: singletonUser,
-    client: singletonClient,
-    project: singletonProject,
+    user: session.user,
+    client: session.client,
+    project: session.project,
     profile,
-    loading: singletonLoading,
+    loading: session.loading,
     profileLoading,
     isAdmin: profile?.role === "admin",
     isGestor: profile?.role === "gestor" || profile?.role === "moderator",
