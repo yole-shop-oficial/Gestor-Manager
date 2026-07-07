@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useSession } from "./useSession";
-import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -27,13 +26,23 @@ const activeChannels = new Map<string, { channel: RealtimeChannel; refCount: num
 // ═══════════════════════════════════════════════════════════
 // HOOK: useRealtime
 //
-// KEY FIX: onEvent is stored in a ref, NOT in useEffect deps.
-// This prevents the channel from being destroyed/recreated on
-// every render when the parent component creates a new closure.
+// KEY FIX vs previous version:
+// 1. client is stored in a REF, NOT in useEffect deps
+//    → Channel is NOT destroyed/recreated when client changes
+// 2. project is a primitive (number | null) — safe in deps
+// 3. onEvent is stored in a ref — doesn't cause re-subscriptions
+// 4. Only string/primitive deps determine when to re-subscribe
+//
+// This prevents the connect/disconnect loop that contributed
+// to React #310.
 // ═══════════════════════════════════════════════════════════
 
 export function useRealtime(config: UseRealtimeConfig): void {
   const { user, client, project } = useSession();
+
+  // Store client in a REF — read inside effect, NOT a dep
+  const clientRef = useRef(client);
+  clientRef.current = client;
 
   // Store onEvent in a ref so it doesn't trigger re-subscriptions
   const onEventRef = useRef(config.onEvent);
@@ -47,14 +56,18 @@ export function useRealtime(config: UseRealtimeConfig): void {
     enabled = true,
   } = config;
 
-  // Use a stable key that only changes when the subscription identity changes
-  // NOT including onEvent (which changes on every render)
-  const stableKey = `${channelName}::${table}::${filter}::${event}::${enabled}::${user?.id}::${project}`;
+  const userId = user?.id ?? "";
+
+  // Stable key based ONLY on primitives — never object references
+  const stableKey = `${channelName}::${table}::${filter}::${event}::${enabled}::${userId}::${project}`;
 
   useEffect(() => {
-    if (!enabled || !user || !client || !project) return;
+    if (!enabled || !userId) return;
 
-    const supabase = client;
+    // Read client from ref — NOT from deps
+    const supabase = clientRef.current;
+    if (!supabase) return;
+
     const channelKey = `${channelName}-${project}`;
 
     // Build postgres_changes config
@@ -94,15 +107,7 @@ export function useRealtime(config: UseRealtimeConfig): void {
       activeChannels.set(channelKey, { channel, refCount: 1 });
     }
 
-    // Page Visibility API
-    const handleVisibility = () => {
-      // Tab visibility changed — React Query handles refetch via staleTime
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-
       const entry = activeChannels.get(channelKey);
       if (entry) {
         entry.refCount--;
@@ -115,8 +120,10 @@ export function useRealtime(config: UseRealtimeConfig): void {
         supabase.removeChannel(channel);
       }
     };
+    // ONLY the stableKey string in deps — NO object references
+    // client is read from clientRef.current inside the effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stableKey, client, project]);
+  }, [stableKey]);
 }
 
 export function getActiveChannelCount(): number {

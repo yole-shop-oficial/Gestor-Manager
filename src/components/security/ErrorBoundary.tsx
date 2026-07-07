@@ -28,6 +28,12 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error, clearing: false };
   }
 
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log the error for debugging — visible in console
+    console.error("[ErrorBoundary] Caught:", error.message);
+    console.error("[ErrorBoundary] Component stack:", errorInfo.componentStack);
+  }
+
   handleReload = async () => {
     this.setState({ clearing: true });
     try {
@@ -40,9 +46,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      const isRenderError = this.state.error?.message?.includes("310") ||
-        this.state.error?.message?.includes("render") ||
-        this.state.error?.message?.includes("Maximum update");
+      const errMsg = this.state.error?.message || "";
+      const isRenderError = errMsg.includes("310") ||
+        errMsg.includes("render") ||
+        errMsg.includes("Maximum update") ||
+        errMsg.includes("Too many re-renders");
 
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
@@ -59,6 +67,15 @@ export class ErrorBoundary extends Component<Props, State> {
               ? "La aplicación encontró un problema al renderizar. Esto puede solucionarse limpiando la caché y recargando."
               : "Ocurrió un error inesperado. Intenta recargar la aplicación."}
           </p>
+
+          {/* Show error details for debugging (user is on Android, no DevTools) */}
+          {errMsg && (
+            <div className="mb-4 p-3 rounded-xl bg-surface border border-border/30 max-w-sm w-full overflow-hidden">
+              <p className="text-[10px] font-mono text-muted-foreground break-all">
+                {errMsg.slice(0, 200)}
+              </p>
+            </div>
+          )}
 
           <button
             onClick={this.handleReload}

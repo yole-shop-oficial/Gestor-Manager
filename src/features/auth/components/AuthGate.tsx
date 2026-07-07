@@ -62,7 +62,6 @@ export function AuthGate({ children }: Props) {
   }
 
   // ─── Conectividad falló PERO no bloqueamos ───
-  // Mostramos advertencia pero dejamos entrar a la app
   if (connResult && !connResult.ok && !connResult.project1) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#0a0e27] via-[#1a1040] to-[#0a0e27] text-white p-6">
@@ -137,8 +136,6 @@ export function AuthGate({ children }: Props) {
 
   // ─── Advertencia de P2 (no bloquea) ───
   if (connResult && !connResult.project2 && connResult.project1) {
-    // P1 funciona, P2 no. Mostramos aviso breve y continuamos.
-    // No bloqueamos — solo registramos en consola
     console.warn("[AUTH GATE] P2 no disponible, pero P1 funciona. Continuando...");
   }
 

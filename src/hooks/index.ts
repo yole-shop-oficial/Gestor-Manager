@@ -1,4 +1,4 @@
-export { useSession } from "./useSession";
+export { useSession, SessionProvider } from "./useSession";
 export type {
   UseSessionResult,
   UserProfile,

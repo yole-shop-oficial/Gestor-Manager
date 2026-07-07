@@ -5,6 +5,7 @@ import "./globals.css";
 import QueryProvider from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ErrorBoundary } from "@/components/security/ErrorBoundary";
+import { SessionProvider } from "@/hooks/useSession";
 
 export const metadata: Metadata = {
   title: "YOLE SHOP",
@@ -109,7 +110,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           <QueryProvider>
             <ErrorBoundary>
-              {children}
+              <SessionProvider>
+                {children}
+              </SessionProvider>
             </ErrorBoundary>
           </QueryProvider>
         </ThemeProvider>
