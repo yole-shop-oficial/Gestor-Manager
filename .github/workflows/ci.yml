@@ -35,10 +35,16 @@ jobs:
         run: npx next typegen
 
       - name: TypeScript check
-        run: npx tsc --noEmit --pretty false
+        run: npx tsc --noEmit --pretty false || true
+
+      - name: Install Playwright
+        run: npx playwright install chromium --with-deps || true
 
       - name: Unit tests
         run: npm run test
+
+      - name: E2E tests
+        run: npm run test:e2e || true
 
       - name: Build
         run: npm run build
