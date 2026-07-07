@@ -93,15 +93,6 @@ function NotificationsContent() {
     enabled: !!userId,
   });
 
-  // Polling fallback: refresh notifications every 45s if Realtime fails
-  useEffect(() => {
-    if (!userId) return;
-    const interval = setInterval(() => {
-      invalidate.notifications(queryClient, userId);
-    }, 45_000);
-    return () => clearInterval(interval);
-  }, [userId, queryClient]);
-
   // ─── Infinite scroll via IntersectionObserver ───
   const loadMoreRef = useRef<HTMLDivElement>(null);
 

@@ -113,58 +113,55 @@ export function ChatLayout() {
     if (convId) setActiveConvId(convId);
   }, [conversations, ensurePrivateConv]);
 
-  // ─── Auto-ensure global conversation exists ───
+  // ─── Auto-ensure global conversation exists (runs ONCE on mount) ───
   const globalSetupDone = useRef(false);
   useEffect(() => {
     if (!client || !project || !userId) return;
     if (globalSetupDone.current) return;
-    if (convsLoading) return; // Wait for conversations to load first
-
-    // Check if global already exists in loaded conversations
-    if (conversations.find(c => c.type === "global")) {
-      globalSetupDone.current = true;
-      return;
-    }
 
     globalSetupDone.current = true;
+    // Don't wait for conversations — do it eagerly
     (async () => {
       try {
         const supabase = client || createLoginClient(getProjectConfig(project));
-        // Try to find existing global conversation
         const { data: global } = await supabase
           .from("conversations").select("id").eq("id", GLOBAL_CONV_ID).maybeSingle();
         
         if (!global) {
-          // Create global chat — ignore if it already exists (409 conflict)
-          const { error: createErr } = await supabase.from("conversations").insert([{
+          await supabase.from("conversations").insert([{
             id: GLOBAL_CONV_ID, type: "global", name: "Chat Global", created_by: userId
-          }]);
-          // 409 = already exists, which is fine
-          if (createErr && !createErr.message?.includes("duplicate")) {
-            console.warn("[Chat] Could not create global conversation:", createErr.message);
-          }
+          }]).then(({ error }) => {
+            if (error && !error.message?.includes("duplicate")) {
+              console.warn("[Chat] Global create:", error.message);
+            }
+          });
         }
 
-        // Add current user to global chat — ignore if already member
         const { data: member } = await supabase
           .from("conversation_members")
-          .select("conversation_id").eq("conversation_id", GLOBAL_CONV_ID).eq("user_id", userId).maybeSingle();
+          .select("conversation_id")
+          .eq("conversation_id", GLOBAL_CONV_ID)
+          .eq("user_id", userId)
+          .maybeSingle();
         
         if (!member) {
-          const { error: memberErr } = await supabase.from("conversation_members").insert([{
+          await supabase.from("conversation_members").insert([{
             conversation_id: GLOBAL_CONV_ID, user_id: userId
-          }]);
-          if (memberErr && !memberErr.message?.includes("duplicate")) {
-            console.warn("[Chat] Could not join global conversation:", memberErr.message);
-          }
+          }]).then(({ error }) => {
+            if (error && !error.message?.includes("duplicate") && !error.message?.includes("already")) {
+              console.warn("[Chat] Global join:", error.message);
+            }
+          });
         }
-        
+
+        // Refresh once after setup
         queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
       } catch (err: any) {
-        console.warn("[Chat] Global conversation setup failed (non-critical):", err?.message || err);
+        // Non-critical, app works without global chat
       }
     })();
-  }, [client, project, userId, conversations, convsLoading, queryClient]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, project, userId, queryClient]);
 
   // ─── Send message ───
   const [sending, setSending] = useState(false);

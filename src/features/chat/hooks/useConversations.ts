@@ -181,15 +181,6 @@ export function useConversations() {
     enabled: !!userId,
   });
 
-  // Polling fallback: refresh conversations every 30s in case Realtime fails
-  useEffect(() => {
-    if (!userId) return;
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [userId, queryClient]);
-
   const conversations = data?.conversations || [];
   const contacts = data?.contacts || [];
 
