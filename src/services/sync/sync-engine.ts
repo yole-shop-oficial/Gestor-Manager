@@ -22,7 +22,7 @@ export interface SyncEngineState {
 }
 
 const DB_NAME = "yole-offline-db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 interface OfflineDBSchema {
   pending_operations: {
@@ -48,6 +48,9 @@ export async function getDB(): Promise<IDBPDatabase<OfflineDBSchema>> {
       }
       if (!db.objectStoreNames.contains("cached_orders")) {
         db.createObjectStore("cached_orders", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("cached_profiles")) {
+        db.createObjectStore("cached_profiles", { keyPath: "id" });
       }
     },
   });

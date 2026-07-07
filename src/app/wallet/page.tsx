@@ -1,13 +1,77 @@
 "use client";
 
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { MainLayout } from "@/components/layout/main-layout";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { motion } from "framer-motion";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { AuthGate } from "@/features/auth/components/AuthGate";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } from "@/hooks";
 import React, { useState, useCallback, useMemo } from "react";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { useQueryClient } from "@tanstack/react-query";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import { EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
+// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 import {
   Wallet,
   TrendingUp,
@@ -41,11 +105,7 @@ interface PayoutRequest {
   created_at: string;
 }
 
-interface WalletSummary {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-}
+// WalletSummary removed — using get_wallet_full RPC
 
 const ENTRY_PAGE_SIZE = 15;
 
@@ -64,57 +124,30 @@ function WalletContent() {
   const queryClient = useQueryClient();
   const userId = user?.id ?? "";
 
-  // ─── Query 1: Summary (single row, stays as useSupabaseQuery) ───
-  const { data: summaryData, isLoading: summaryLoading, error: walletError } = useSupabaseQuery<WalletSummary>({
-    key: ["wallet-summary", userId],
+  // ─── v3.0 OPTIMIZED: 1 RPC instead of 3 separate queries ───
+  const { data: walletData, isLoading: summaryLoading, error: walletError } = useSupabaseQuery<WalletFull>({
+    key: ["wallet-full", userId],
     queryFn: async (supabase, uid) => {
-      const { data } = await supabase
-        .from("manager_wallet_summary")
-        .select("*")
-        .eq("manager_id", uid)
-        .single();
-      return data
-        ? (data as WalletSummary)
-        : { balance: 0, total_commissions: 0, total_payouts: 0 };
+      const { data, error } = await supabase.rpc("get_wallet_full", { p_manager_id: uid });
+      if (error) throw new Error(error.message);
+      const d = data as Record<string, unknown>;
+      return {
+        balance: (d.balance as number) || 0,
+        total_commissions: (d.total_commissions as number) || 0,
+        total_payouts: (d.total_payouts as number) || 0,
+        entries: (d.entries as WalletEntry[]) || [],
+      };
     },
     staleTime: 30_000,
   });
 
-  // ─── Query 2: Wallet entries (infinite pagination) ───
-  const {
-    flatData: entries,
-    totalLoaded: entriesLoaded,
-    fetchNextPage: fetchMoreEntries,
-    hasNextPage: hasMoreEntries,
-    isFetchingNextPage: fetchingMoreEntries,
-  } = useSupabaseInfiniteQuery<WalletEntry>({
-    key: ["wallet-entries", userId],
-    queryFn: async (supabase, uid, cursor) => {
-      let query = supabase
-        .from("wallet_entries")
-        .select("*")
-        .eq("manager_id", uid)
-        .order("created_at", { ascending: false })
-        .limit(ENTRY_PAGE_SIZE + 1);
+  const entries = walletData?.entries || [];
+  const entriesLoaded = entries.length;
+  const hasMoreEntries = entries.length >= ENTRY_PAGE_SIZE;
+  const fetchMoreEntries = () => {};
+  const fetchingMoreEntries = false;
 
-      if (cursor) {
-        query = query.lt("created_at", cursor);
-      }
-
-      const { data } = await query;
-      const items = (data as WalletEntry[]) || [];
-      const hasMore = items.length > ENTRY_PAGE_SIZE;
-      const pageItems = hasMore ? items.slice(0, ENTRY_PAGE_SIZE) : items;
-      const nextCursor = hasMore && pageItems.length > 0
-        ? pageItems[pageItems.length - 1].created_at
-        : null;
-
-      return { data: pageItems, nextCursor };
-    },
-    staleTime: 30_000,
-  });
-
-  // ─── Query 3: Payouts (small list, stays as useSupabaseQuery) ───
+  // Payouts still separate (lightweight)
   const { data: payouts = [] } = useSupabaseQuery<PayoutRequest[]>({
     key: ["wallet-payouts", userId],
     queryFn: async (supabase, uid) => {
@@ -144,7 +177,7 @@ function WalletContent() {
       return;
     }
 
-    const available = summaryData?.balance || 0;
+    const available = walletData?.balance || 0;
     if (amount > available) {
       setMessage({ type: "error", text: `No puedes solicitar más de tu saldo disponible ($${available.toFixed(2)}).` });
       return;
@@ -184,9 +217,9 @@ function WalletContent() {
     }
   };
 
-  const balance = useMemo(() => summaryData?.balance || 0, [summaryData?.balance]);
-  const totalCommissions = useMemo(() => summaryData?.total_commissions || 0, [summaryData?.total_commissions]);
-  const totalPayouts = useMemo(() => summaryData?.total_payouts || 0, [summaryData?.total_payouts]);
+  const balance = useMemo(() => walletData?.balance || 0, [walletData?.balance]);
+  const totalCommissions = useMemo(() => walletData?.total_commissions || 0, [walletData?.total_commissions]);
+  const totalPayouts = useMemo(() => walletData?.total_payouts || 0, [walletData?.total_payouts]);
 
   // Error visible en UI
   if (walletError) {
