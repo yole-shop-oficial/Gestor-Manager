@@ -86,7 +86,7 @@ function OrderDetailContent() {
         .from("orders")
         .select("*, order_images(*)")
         .eq("id", orderId)
-        .single();
+        .maybeSingle();
 
       if (fetchError) throw new Error("Pedido no encontrado");
       if (!data) throw new Error("Pedido no encontrado");

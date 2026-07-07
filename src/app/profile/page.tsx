@@ -257,8 +257,8 @@ function TabWallet({ userId }: { userId: string }) {
   const { data, isLoading, error } = useSupabaseQuery<WalletSummary>({
     key: ["profile-wallet", userId],
     queryFn: async (client, uid) => {
-      const { data } = await client.from("manager_wallet_summary").select("*").eq("manager_id", uid).single();
-      return (data as WalletSummary) || { balance: 0, total_commissions: 0, total_payouts: 0 };
+      const { data } = await client.from("manager_wallet_summary").select("*").eq("manager_id", uid).maybeSingle();
+      return ((data as WalletSummary) || { balance: 0, total_commissions: 0, total_payouts: 0 });
     },
     staleTime: 30_000,
   });

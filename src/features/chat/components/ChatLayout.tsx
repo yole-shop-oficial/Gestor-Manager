@@ -71,7 +71,7 @@ export function ChatLayout() {
 
       // Create new private conversation
       const { data: newConv, error: createErr } = await supabase
-        .from("conversations").insert([{ type: "private", created_by: userId }]).select("id").single();
+        .from("conversations").insert([{ type: "private", created_by: userId }]).select("id").maybeSingle();
       
       if (createErr || !newConv) {
         console.warn("[Chat] Error creating private conversation:", createErr?.message);

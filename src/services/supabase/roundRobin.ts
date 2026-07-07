@@ -83,7 +83,7 @@ async function getRegistrationCount(
     .from("round_robin_counter")
     .select("total_registrations")
     .eq("id", 1)
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.warn(

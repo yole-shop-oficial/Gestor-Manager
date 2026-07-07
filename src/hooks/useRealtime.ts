@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useSession } from "./useSession";
 
@@ -18,116 +18,95 @@ export interface UseRealtimeConfig {
 }
 
 // ═══════════════════════════════════════════════════════════
-// TRACKER: prevent duplicate channels
+// WEBSOCKET FAILURE DETECTION
 // ═══════════════════════════════════════════════════════════
 
-const activeChannels = new Map<string, { channel: RealtimeChannel; refCount: number }>();
+const WS_FAILURES = new Map<string, number>();
+const MAX_WS_FAILURES = 2;
+
+/**
+ * Returns true if WebSocket connections have failed too many times.
+ * When true, all Realtime hooks should fall back to polling.
+ */
+export function isRealtimeDisabled(): boolean {
+  // Check global failure count
+  let total = 0;
+  for (const v of WS_FAILURES.values()) total += v;
+  return total >= MAX_WS_FAILURES;
+}
+
+export function resetRealtimeFailures(): void {
+  WS_FAILURES.clear();
+}
 
 // ═══════════════════════════════════════════════════════════
 // HOOK: useRealtime
-//
-// KEY FIX vs previous version:
-// 1. client is stored in a REF, NOT in useEffect deps
-//    → Channel is NOT destroyed/recreated when client changes
-// 2. project is a primitive (number | null) — safe in deps
-// 3. onEvent is stored in a ref — doesn't cause re-subscriptions
-// 4. Only string/primitive deps determine when to re-subscribe
-//
-// This prevents the connect/disconnect loop that contributed
-// to React #310.
 // ═══════════════════════════════════════════════════════════
 
 export function useRealtime(config: UseRealtimeConfig): void {
   const { user, client, project } = useSession();
+  const [disabled, setDisabled] = useState(false);
 
-  // Store client in a REF — read inside effect, NOT a dep
   const clientRef = useRef(client);
   clientRef.current = client;
 
-  // Store onEvent in a ref so it doesn't trigger re-subscriptions
   const onEventRef = useRef(config.onEvent);
   onEventRef.current = config.onEvent;
 
-  const {
-    channel: channelName,
-    table,
-    filter,
-    event = "*",
-    enabled = true,
-  } = config;
-
+  const { channel: channelName, table, filter, event = "*", enabled = true } = config;
   const userId = user?.id ?? "";
 
-  // Stable key based ONLY on primitives — never object references
-  const stableKey = `${channelName}::${table}::${filter}::${event}::${enabled}::${userId}::${project}`;
+  // Check if globally disabled
+  useEffect(() => {
+    if (isRealtimeDisabled()) setDisabled(true);
+  }, []);
+
+  const effectiveEnabled = enabled && !disabled && !isRealtimeDisabled();
+  const stableKey = `${channelName}::${table}::${filter}::${event}::${effectiveEnabled}::${userId}::${project}`;
 
   useEffect(() => {
-    if (!enabled || !userId) return;
+    if (!effectiveEnabled || !userId) return;
 
-    // Read client from ref — NOT from deps
     const supabase = clientRef.current;
     if (!supabase) return;
 
-    const channelKey = `${channelName}-${project}`;
+    const changesConfig: Record<string, unknown> = { event, schema: "public", table };
+    if (filter) changesConfig.filter = filter;
 
-    // Build postgres_changes config
-    const changesConfig: Record<string, unknown> = {
-      event,
-      schema: "public",
-      table,
-    };
-    if (filter) {
-      changesConfig.filter = filter;
-    }
+    let failCount = 0;
+    let closed = false;
 
-    // Create channel — use onEventRef.current for the callback
     const channel = supabase
       .channel(channelName)
-      .on(
-        "postgres_changes" as any,
-        changesConfig as any,
+      .on("postgres_changes" as any, changesConfig as any,
         (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
           onEventRef.current(payload);
         }
       )
       .subscribe((status, err) => {
         if (status === "SUBSCRIBED") {
-          console.log(`[REALTIME] ✅ ${channelName} connected`);
-        } else if (status === "CHANNEL_ERROR") {
-          console.warn(`[REALTIME] ❌ ${channelName} error:`, err?.message || "unknown");
-        } else if (status === "TIMED_OUT") {
-          console.warn(`[REALTIME] ⏰ ${channelName} timed out`);
-        } else if (status === "CLOSED") {
-          console.warn(`[REALTIME] 🔒 ${channelName} closed`);
+          // Success — reset failure count
+          const current = WS_FAILURES.get(channelName) || 0;
+          if (current > 0) WS_FAILURES.set(channelName, 0);
+        } else if (status === "CHANNEL_ERROR" || status === "CLOSED") {
+          failCount++;
+          const total = (WS_FAILURES.get(channelName) || 0) + 1;
+          WS_FAILURES.set(channelName, total);
+          
+          // If too many failures, disable all realtime
+          if (isRealtimeDisabled()) {
+            setDisabled(true);
+            try { supabase.removeChannel(channel); } catch {}
+          }
         }
       });
 
-    // Track channel
-    if (activeChannels.has(channelKey)) {
-      activeChannels.get(channelKey)!.refCount++;
-    } else {
-      activeChannels.set(channelKey, { channel, refCount: 1 });
-    }
-
     return () => {
-      const entry = activeChannels.get(channelKey);
-      if (entry) {
-        entry.refCount--;
-        if (entry.refCount <= 0) {
-          supabase.removeChannel(channel);
-          activeChannels.delete(channelKey);
-          console.log(`[REALTIME] 🗑️ ${channelName} removed (no subscribers)`);
-        }
-      } else {
-        try { supabase.removeChannel(channel); } catch {}
-      }
+      try { supabase.removeChannel(channel); } catch {}
     };
-    // ONLY the stableKey string in deps — NO object references
-    // client is read from clientRef.current inside the effect
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stableKey]);
 }
 
 export function getActiveChannelCount(): number {
-  return activeChannels.size;
+  return 0; // Simplified — channels are now per-effect
 }

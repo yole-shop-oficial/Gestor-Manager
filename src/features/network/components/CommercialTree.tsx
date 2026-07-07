@@ -76,7 +76,7 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
     queryFn: async (client) => {
       if (!selectedNodeId) return null;
       const [profile, orders, wallet] = await Promise.all([
-        client.from("profiles").select("*").eq("id", selectedNodeId).single(),
+        client.from("profiles").select("*").eq("id", selectedNodeId).maybeSingle(),
         client.from("orders").select("status", { count: "exact", head: true }).eq("manager_id", selectedNodeId),
         client.from("wallet_entries").select("amount, entry_type").eq("manager_id", selectedNodeId),
       ]);

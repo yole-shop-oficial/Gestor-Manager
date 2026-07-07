@@ -320,7 +320,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .from("profiles")
       .select("*")
       .eq("id", userId)
-      .single()
+      .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
