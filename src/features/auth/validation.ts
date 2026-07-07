@@ -70,6 +70,15 @@ export const registerSchema = z
         message: "Solo se aceptan cuentas Gmail (@gmail.com)",
       }),
 
+    // Código del gestor que te invitó (opcional)
+    // Si se deja vacío, quedarás directamente bajo el Administrador
+    referralCode: z
+      .string()
+      .max(8, "Código de 8 caracteres")
+      .regex(/^[A-HJ-NP-Z2-9]*$/, "Código inválido: 8 caracteres, sin I,O,0,1")
+      .optional()
+      .or(z.literal("")),
+
     // ── Paso 2: Información personal ──
     phone: z
       .string()

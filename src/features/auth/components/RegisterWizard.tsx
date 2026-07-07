@@ -19,7 +19,7 @@ import { getClientDiagnostics } from "@/services/supabase/clientFactory";
 const TOTAL_STEPS = 4;
 
 const STEP_FIELDS: Record<number, (keyof RegisterFormValues)[]> = {
-  1: ["fullName", "username", "email"],
+  1: ["fullName", "username", "email", "referralCode"],
   2: [
     "phone", "age", "birthDate", "gender", "idCard", "address",
     "bankCardNumber", "bankCardHolder", "transferConfirmationNumber",
@@ -51,7 +51,7 @@ export function RegisterWizard() {
     resolver: zodResolver(registerSchema) as any,
     mode: "all",
     defaultValues: {
-      fullName: "", username: "", email: "", phone: "",
+      fullName: "", username: "", email: "", referralCode: "", phone: "",
       age: 18, birthDate: "", gender: "male", idCard: "", address: "",
       bankCardNumber: "", bankCardHolder: "", transferConfirmationNumber: "",
       observations: "", hasSalesExperience: false,

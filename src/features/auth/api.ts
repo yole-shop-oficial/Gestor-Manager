@@ -191,6 +191,7 @@ export async function registerGestor(
           read_terms: String(Boolean(values.readTerms)),
           confirm_real_info: String(Boolean(values.confirmRealInfo)),
           understand_payments: String(Boolean(values.understandPayments)),
+          referral_code: (values.referralCode || "").toUpperCase(),
         },
       },
     });
