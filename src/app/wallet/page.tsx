@@ -26,6 +26,8 @@ interface WalletEntry {
   id: string;
   amount: number;
   entry_type: "commission" | "adjustment" | "payout";
+  source_level: number | null;
+  source_user_id: string | null;
   description: string | null;
   order_id: string | null;
   created_at: string;
@@ -368,7 +370,7 @@ function WalletContent() {
                     {e.entry_type === "commission" ? "+" : "-"}${Math.abs(e.amount).toFixed(2)}
                   </p>
                   <p className="text-[10px] text-muted-foreground truncate">
-                    {e.description || (e.entry_type === "commission" ? "Comisión por venta" : e.entry_type === "payout" ? "Retiro" : "Ajuste")}
+                    {e.description || (e.entry_type === "commission" ? (e.source_level != null ? `Comisión Nivel ${e.source_level + 1}` : "Comisión por venta") : e.entry_type === "payout" ? "Retiro" : "Ajuste")}
                   </p>
                 </div>
                 <span className="text-[10px] text-muted-foreground">

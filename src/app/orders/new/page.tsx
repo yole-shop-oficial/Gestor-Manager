@@ -10,7 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { logger } from "@/lib/logger";
 import {
-  ArrowLeft, Package, DollarSign, User, Phone, MapPin,
+  ArrowLeft, Package, DollarSign, User, Phone, MapPin, Network, Layers,
   Truck, Clock, FileText, Loader2, CheckCircle2,
   Image as ImageIcon, X, Upload,
 } from "lucide-react";
@@ -118,11 +118,42 @@ function NewOrderContent() {
       const config = getProjectConfig(project);
       const supabase = client || createLoginClient(config);
 
-      // Crear el pedido (con .select para obtener ID)
+      // ─── v3.0: Construir cadena de distribución ───
+      // Buscar ancestros del gestor para construir la cadena completa
+      let chain: string[] = [user.id];
+      let marginsJson: Record<string, any> = {};
+
+      try {
+        const { data: ancestors } = await supabase.rpc("get_ancestors", { p_user_id: user.id });
+        if (ancestors) {
+          // ancestors are returned ordered by level (admin first)
+          const ancestorIds = (ancestors as any[]).map((a: any) => a.id);
+          chain = [...ancestorIds, user.id]; // admin, ..., manager, gestor
+        }
+      } catch (e) {
+        logger.error("chain_build_failed", { error: String(e) });
+        // Fallback: solo el gestor
+        chain = [user.id];
+      }
+
+      // Calcular márgenes automáticos
+      try {
+        const { data: margins } = await supabase.rpc("calculate_margins", {
+          p_chain: chain,
+          p_base_price: Number(form.base_price),
+          p_sale_price: Number(form.sale_price)
+        });
+        if (margins) marginsJson = margins as Record<string, any>;
+      } catch (e) {
+        logger.error("margins_calc_failed", { error: String(e) });
+      }
+
+      // Crear el pedido con cadena de distribución
       const { data: orderData, error: insertError } = await supabase.from("orders").insert([{
         manager_id: user.id,
         product_name: form.product_name.trim(),
         base_price: Number(form.base_price),
+        provider_price: Number(form.base_price),
         sale_price: Number(form.sale_price),
         size: form.size.trim() || null,
         customer_name: form.customer_name.trim(),
@@ -133,6 +164,8 @@ function NewOrderContent() {
         payment_type: form.payment_type,
         notes: form.notes.trim() || null,
         status: "pending",
+        chain: chain,
+        margins: marginsJson,
       }]).select("id");
 
       if (insertError) {

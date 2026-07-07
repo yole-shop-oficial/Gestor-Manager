@@ -12,7 +12,7 @@ import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRo
 import {
   ArrowLeft, Package, DollarSign, User, Phone, MapPin,
   Truck, Clock, FileText, Loader2, CheckCircle2, XCircle,
-  Image as ImageIcon, AlertTriangle,
+  Image as ImageIcon, AlertTriangle, Network, Layers, TrendingUp, ArrowDown,
 } from "lucide-react";
 
 interface OrderImage {
@@ -29,6 +29,7 @@ interface Order {
   id: string;
   product_name: string;
   base_price: number;
+  provider_price: number | null;
   sale_price: number;
   size: string | null;
   customer_name: string;
@@ -42,6 +43,8 @@ interface Order {
   created_at: string;
   updated_at: string;
   manager_id: string;
+  chain: string[] | null;
+  margins: Record<string, { user_id: string; margin: number; price: number }> | null;
   order_images: OrderImage[];
 }
 
