@@ -93,6 +93,15 @@ function NotificationsContent() {
     enabled: !!userId,
   });
 
+  // Polling: actualizar notificaciones cada 45s
+  useEffect(() => {
+    if (!userId) return;
+    const id = setInterval(() => {
+      invalidate.notifications(queryClient, userId);
+    }, 45_000);
+    return () => clearInterval(id);
+  }, [userId, queryClient]);
+
   // ─── Infinite scroll via IntersectionObserver ───
   const loadMoreRef = useRef<HTMLDivElement>(null);
 

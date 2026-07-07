@@ -238,8 +238,8 @@ export function FloatingToolKit() {
         didDrag.current = true;
       }
 
-      const newX = Math.max(8, Math.min(window.innerWidth - 60, dragStart.current.px + dx));
-      const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.py - dy));
+      const newX = Math.max(8, Math.min(window.innerWidth - 60, dragStart.current.px - dx));
+      const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.py + dy));
       // Directly set motion values — NO re-render!
       posX.set(newX);
       posY.set(newY);

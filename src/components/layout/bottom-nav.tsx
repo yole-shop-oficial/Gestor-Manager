@@ -23,6 +23,7 @@ const adminItems = [
   { label: "Red", icon: Network, href: "/network" },
   { label: "Chat", icon: MessageCircle, href: "/chat" },
   { label: "Wallet", icon: Wallet, href: "/wallet" },
+  { label: "Perfil", icon: User, href: "/profile" },
 ];
 
 export function BottomNav() {

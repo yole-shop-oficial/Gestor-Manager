@@ -181,6 +181,15 @@ export function useConversations() {
     enabled: !!userId,
   });
 
+  // Polling: actualizar conversaciones cada 25s (badges, últimos mensajes)
+  useEffect(() => {
+    if (!userId) return;
+    const id = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
+    }, 25_000);
+    return () => clearInterval(id);
+  }, [userId, queryClient]);
+
   const conversations = data?.conversations || [];
   const contacts = data?.contacts || [];
 
