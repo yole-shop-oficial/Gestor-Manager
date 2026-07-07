@@ -24,7 +24,7 @@ import {
   ChevronRight,
   ChevronDown,
   Package,
-  Eye,
+  Eye, Network,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -42,6 +42,17 @@ const AdminAnalytics = dynamic(
 
 const MonitoringDashboard = dynamic(
   () => import("@/components/monitoring/MonitoringDashboard").then((m) => ({ default: m.MonitoringDashboard })),
+  {
+    loading: () => (
+      <div className="flex justify-center py-8">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    ),
+  }
+);
+
+const CommercialTreeLazy = dynamic(
+  () => import("@/features/network/components/CommercialTree").then((m) => ({ default: m.CommercialTree })),
   {
     loading: () => (
       <div className="flex justify-center py-8">
@@ -537,6 +548,20 @@ function AdminContent() {
             )}
           </>
         )}
+      </motion.div>
+
+      {/* Árbol Comercial */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Network className="w-5 h-5 text-indigo-500" />
+            Árbol Comercial
+          </h2>
+          <Link href="/network" className="text-xs font-bold text-primary">Ver completo →</Link>
+        </div>
+        <div className="card-filled rounded-2xl p-4">
+          <CommercialTreeLazy />
+        </div>
       </motion.div>
 
       {/* Analytics */}

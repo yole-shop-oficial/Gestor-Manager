@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ShoppingCart, Wallet, MessageCircle, User, Shield } from "lucide-react";
+import { Home, ShoppingCart, Wallet, MessageCircle, User, Shield, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useSession } from "@/hooks";
@@ -11,17 +11,18 @@ import { useSession } from "@/hooks";
 const gestorItems = [
   { label: "Inicio", icon: Home, href: "/" },
   { label: "Pedidos", icon: ShoppingCart, href: "/orders" },
-  { label: "Chat", icon: MessageCircle, href: "/chat" },
+  { label: "Mi Red", icon: Network, href: "/network" },
   { label: "Billetera", icon: Wallet, href: "/wallet" },
+  { label: "Chat", icon: MessageCircle, href: "/chat" },
   { label: "Perfil", icon: User, href: "/profile" },
 ];
 
 const adminItems = [
   { label: "Admin", icon: Shield, href: "/admin" },
   { label: "Pedidos", icon: ShoppingCart, href: "/orders" },
+  { label: "Red", icon: Network, href: "/network" },
   { label: "Chat", icon: MessageCircle, href: "/chat" },
-  { label: "Gestores", icon: User, href: "/admin" },
-  { label: "Perfil", icon: User, href: "/profile" },
+  { label: "Wallet", icon: Wallet, href: "/wallet" },
 ];
 
 export function BottomNav() {
