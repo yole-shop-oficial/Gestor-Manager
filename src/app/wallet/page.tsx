@@ -1,77 +1,13 @@
 "use client";
 
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
 import { MainLayout } from "@/components/layout/main-layout";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
 import { motion } from "framer-motion";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
 import { AuthGate } from "@/features/auth/components/AuthGate";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
-import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } from "@/hooks";
-import React, { useState, useCallback, useMemo } from "react";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import React, { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
 import { EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
-// ─── v3.0: Optimized with get_wallet_full RPC (1 query instead of 4) ───
-interface WalletFull {
-  balance: number;
-  total_commissions: number;
-  total_payouts: number;
-  entries: WalletEntry[];
-}
-
 import {
   Wallet,
   TrendingUp,
@@ -81,7 +17,6 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  AlertTriangle,
   DollarSign,
   ChevronDown,
 } from "lucide-react";
@@ -97,6 +32,13 @@ interface WalletEntry {
   created_at: string;
 }
 
+interface WalletFull {
+  balance: number;
+  total_commissions: number;
+  total_payouts: number;
+  entries: WalletEntry[];
+}
+
 interface PayoutRequest {
   id: string;
   amount: number;
@@ -104,8 +46,6 @@ interface PayoutRequest {
   notes: string | null;
   created_at: string;
 }
-
-// WalletSummary removed — using get_wallet_full RPC
 
 const ENTRY_PAGE_SIZE = 15;
 
@@ -206,7 +146,6 @@ function WalletContent() {
         setPayoutAmount("");
         setPayoutNotes("");
         setShowPayoutForm(false);
-        // Invalidar wallet para refrescar
         invalidate.wallet(queryClient, userId);
       }
     } catch (err: any) {
@@ -380,7 +319,7 @@ function WalletContent() {
         </motion.div>
       )}
 
-      {/* Historial de movimientos (paginado) */}
+      {/* Historial de movimientos */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="space-y-2">
         <h2 className="text-sm font-semibold">Movimientos recientes</h2>
         {entries.length === 0 ? (
@@ -412,7 +351,6 @@ function WalletContent() {
               </div>
             ))}
 
-            {/* Load more button */}
             {hasMoreEntries && (
               <button
                 onClick={() => fetchMoreEntries()}
