@@ -1,7 +1,7 @@
 "use client";
 
 import { getOrCreateClient, STORAGE_KEYS } from "@/services/supabase/clientFactory";
-import { getProjectConfig } from "@/services/supabase/roundRobin";
+import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -26,15 +26,15 @@ interface FlushEntry extends LogEntry {
 // ═══════════════════════════════════════════════════════════
 
 const MAX_BUFFER = 20;
-const FLUSH_INTERVAL = 30_000; // 30 seconds
-const LOCAL_BUFFER_MAX = 200; // in-memory ring buffer for debugging
+const FLUSH_INTERVAL = 60_000; // Increased from 30s to 60s — less Supabase load
+const LOCAL_BUFFER_MAX = 200;
 
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════
 
 const flushBuffer: LogEntry[] = [];
-const localBuffer: FlushEntry[] = []; // ring buffer for getBuffer()
+const localBuffer: FlushEntry[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let currentUserId: string | null = null;
 let currentProject: 1 | 2 | null = null;
@@ -50,27 +50,22 @@ function addToLocalBuffer(entry: FlushEntry): void {
 
 // ═══════════════════════════════════════════════════════════
 // FLUSH: Send buffer to Supabase app_logs
+// v4 FIX: Use the SAME authenticated client that useSession uses
+// instead of creating a separate client with persistSession:false.
+// The separate client had no valid JWT → RLS blocked inserts.
 // ═══════════════════════════════════════════════════════════
 
 async function flushToSupabase(): Promise<void> {
   if (flushBuffer.length === 0 || !currentUserId || !currentProject) return;
 
-  // Take all entries from buffer atomically
   const entries = flushBuffer.splice(0, flushBuffer.length);
   if (entries.length === 0) return;
 
   try {
     const config = getProjectConfig(currentProject);
-    // Use a non-auth client for logging (avoid auth state issues)
-    const supabase = getOrCreateClient(config.url, config.anonKey, {
-      storageKey: `${STORAGE_KEYS.AUTH_P1}-logger`,
-      persistSession: false,
-      autoRefreshToken: false,
-    });
-
-    // v4 FIX: No longer call supabase.auth.getSession() on every flush.
-    // The logger client has persistSession: false, so getSession() always returns null.
-    // Instead, pass user_id directly from the module-level currentUserId variable.
+    // v4 FIX: Use the SAME authenticated client with persistSession + autoRefresh
+    // This ensures the logger has a valid JWT for RLS policies
+    const supabase = createLoginClient(config);
 
     const rows = entries.map((e) => ({
       user_id: e.user_id || currentUserId,
@@ -91,7 +86,7 @@ async function flushToSupabase(): Promise<void> {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SCHEDULER: Auto-flush every 30s or when buffer full
+// SCHEDULER: Auto-flush every 60s or when buffer full
 // ═══════════════════════════════════════════════════════════
 
 function ensureScheduler(): void {
@@ -100,11 +95,6 @@ function ensureScheduler(): void {
   flushTimer = setInterval(() => {
     flushToSupabase();
   }, FLUSH_INTERVAL);
-
-  // Don't prevent tab from closing
-  if (flushTimer && typeof flushTimer === "number") {
-    // Node.js timer — no unref needed in browser
-  }
 }
 
 function stopScheduler(): void {
@@ -121,10 +111,8 @@ function stopScheduler(): void {
 function log(level: LogLevel, event: string, data?: Record<string, unknown>): void {
   const timestamp = new Date().toISOString();
 
-  // Always add to local ring buffer
   addToLocalBuffer({ level, event, data, timestamp });
 
-  // Console output
   const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
   fn(`[${level.toUpperCase()}] ${event}`, data ?? "");
 
@@ -132,7 +120,6 @@ function log(level: LogLevel, event: string, data?: Record<string, unknown>): vo
   const isProduction = typeof window !== "undefined" && window.location.hostname !== "localhost";
   if (isProduction && level === "info") return;
 
-  // Add to flush buffer
   const entry: LogEntry = {
     level,
     event,
@@ -144,7 +131,6 @@ function log(level: LogLevel, event: string, data?: Record<string, unknown>): vo
   flushBuffer.push(entry);
   ensureScheduler();
 
-  // Immediate flush if buffer is full
   if (flushBuffer.length >= MAX_BUFFER) {
     flushToSupabase();
   }
@@ -155,35 +141,20 @@ function log(level: LogLevel, event: string, data?: Record<string, unknown>): vo
 // ═══════════════════════════════════════════════════════════
 
 export const logger = {
-  /** Log an info event (only sent to Supabase in development) */
   info: (event: string, data?: Record<string, unknown>) => log("info", event, data),
-
-  /** Log a warning event (always sent to Supabase) */
   warn: (event: string, data?: Record<string, unknown>) => log("warn", event, data),
-
-  /** Log an error event (always sent to Supabase) */
   error: (event: string, data?: Record<string, unknown>) => log("error", event, data),
 
-  /** Set the current user context for logging */
   setUser: (userId: string | null, project: 1 | 2 | null) => {
     currentUserId = userId;
     currentProject = project;
   },
 
-  /** Manually flush buffered logs to Supabase */
   flush: () => flushToSupabase(),
-
-  /** Get the local ring buffer (for debugging) */
   getBuffer: (): FlushEntry[] => [...localBuffer],
-
-  /** Clear the local ring buffer */
-  clearBuffer: (): void => {
-    localBuffer.length = 0;
-  },
-
-  /** Stop the auto-flush scheduler */
+  clearBuffer: (): void => { localBuffer.length = 0; },
   destroy: (): void => {
     stopScheduler();
-    flushToSupabase(); // final flush
+    flushToSupabase();
   },
 };

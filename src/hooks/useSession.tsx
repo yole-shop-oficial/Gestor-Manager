@@ -229,6 +229,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, [setState]);
 
+  // ─── AUTH STATE LISTENER: Handle token refresh & sign out ───
+  // v4 FIX: Without this listener, the user object in context becomes stale
+  // when Supabase internally refreshes the JWT (every ~1 hour). All subsequent
+  // API calls then fail with "JWT expired" because the old user is still used.
+  useEffect(() => {
+    const client = state.client;
+    if (!client) return;
+
+    const { data: { subscription } } = client.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "TOKEN_REFRESHED" && session?.user) {
+          // Token was refreshed — update user in context (keeps same id, new token)
+          setState({
+            user: session.user,
+          });
+        } else if (event === "SIGNED_OUT") {
+          // Session was lost (token expired without refresh, or manual sign out)
+          clearProfileCache();
+          logger.setUser(null, null);
+          setState({
+            user: null,
+            client: null,
+            project: null,
+            profile: null,
+            profileLoading: false,
+          });
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [state.client, setState]);
+
   // ─── INIT: Check for existing session (runs ONCE) ───
   const initDone = useRef(false);
   useEffect(() => {

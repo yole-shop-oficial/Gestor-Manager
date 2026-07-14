@@ -80,10 +80,25 @@ export function useSupabaseQuery<T>(
       try {
         return await options.queryFn(resolvedClient, userId);
       } catch (err: any) {
+        const errMsg = err?.message || String(err);
+
+        // v4 FIX: If JWT expired, try to refresh the session before giving up
+        if (errMsg.includes("JWT expired") || errMsg.includes("401")) {
+          try {
+            const { data: refreshData } = await resolvedClient.auth.refreshSession();
+            if (refreshData.session) {
+              // Token refreshed successfully — retry the original query
+              return await options.queryFn(resolvedClient, userId);
+            }
+          } catch {
+            // Refresh failed — will be handled by onAuthStateChange SIGNED_OUT
+          }
+        }
+
         // Log query errors to monitoring
         logger.error("query_failed", {
           key: options.key.join("/"),
-          error: err?.message || String(err),
+          error: errMsg,
         });
         throw err;
       }
@@ -91,7 +106,12 @@ export function useSupabaseQuery<T>(
     enabled: isReady && (options.enabled !== false),
     staleTime: options.staleTime,
     gcTime: options.gcTime,
-    retry: 2,
+    retry: (failureCount, error: any) => {
+      // Don't retry auth errors — they need token refresh, not retry
+      const msg = error?.message || "";
+      if (msg.includes("JWT expired") || msg.includes("401")) return false;
+      return failureCount < 2;
+    },
     refetchOnWindowFocus: false,
   };
 
