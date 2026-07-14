@@ -55,3 +55,12 @@ uploads/
 unificador.txt
 .config/
 .npm/
+
+# Local tooling con credenciales / volcados (NO subir)
+audit_dump.json
+ESTADO-PROYECTO.md
+AUDITORIA-2026-07-14.md
+scripts/audit_db.py
+scripts/audit_v2.py
+scripts/inspect_schema.py
+scripts/apply_migration.py
