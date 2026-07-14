@@ -242,8 +242,11 @@ export function FloatingToolKit() {
         didDrag.current = true;
       }
 
+      // CSS `right` grows leftward, CSS `bottom` grows upward.
+      // So both deltas must be SUBTRACTED from the start position
+      // to make pointer movement map to visual movement correctly.
       const newX = Math.max(8, Math.min(window.innerWidth - 60, dragStart.current.px - dx));
-      const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.py + dy));
+      const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.py - dy));
       // Directly set motion values — NO re-render!
       posX.set(newX);
       posY.set(newY);
