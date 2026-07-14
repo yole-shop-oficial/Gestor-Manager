@@ -7,6 +7,7 @@ import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } fr
 import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
+import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import { StatusBadge, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import { logger } from "@/lib/logger";
 import {
@@ -114,30 +115,41 @@ function AdminContent() {
   const isAdmin = profile?.role === "admin";
   const userId = user?.id ?? "";
 
-  // ─── Query 1: KPIs via SQL function (1 request instead of 6) ───
+  // ─── Query 1: KPIs via SQL function (P1 + P2 merged) ───
   const { data: kpis, isLoading: kpisLoading, error: kpisError } = useSupabaseQuery<AdminKPIs>({
     key: ["admin-dashboard"],
     queryFn: async (supabase) => {
-      const { data, error } = await supabase.rpc("get_admin_dashboard");
+      // P1 (proyecto principal del admin)
+      const { data: d1, error: e1 } = await supabase.rpc("get_admin_dashboard");
+      if (e1) throw new Error(e1.message);
+      const r1 = (d1 as Record<string, unknown>) || {};
 
-      if (error) throw new Error(error.message);
-      // El RPC devuelve claves en snake_case (total_users, ...);
-      // mapearlas al camelCase que usa AdminKPIs.
-      const raw = (data as Record<string, unknown>) || {};
+      // P2 (cross-project) — si falla, solo usamos P1
+      let r2: Record<string, unknown> = {};
+      try {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) {
+          const { data: d2 } = await p2.rpc("get_admin_dashboard");
+          r2 = (d2 as Record<string, unknown>) || {};
+        }
+      } catch {
+        // P2 no disponible — continuar solo con P1
+      }
+
       return {
-        totalUsers: Number(raw.total_users ?? 0),
-        pendingUsers: Number(raw.pending_users ?? 0),
-        activeUsers: Number(raw.active_users ?? 0),
-        totalOrders: Number(raw.total_orders ?? 0),
-        pendingOrders: Number(raw.pending_orders ?? 0),
-        pendingPayouts: Number(raw.pending_payouts ?? 0),
+        totalUsers: Number(r1.total_users ?? 0) + Number(r2.total_users ?? 0),
+        pendingUsers: Number(r1.pending_users ?? 0) + Number(r2.pending_users ?? 0),
+        activeUsers: Number(r1.active_users ?? 0) + Number(r2.active_users ?? 0),
+        totalOrders: Number(r1.total_orders ?? 0) + Number(r2.total_orders ?? 0),
+        pendingOrders: Number(r1.pending_orders ?? 0) + Number(r2.pending_orders ?? 0),
+        pendingPayouts: Number(r1.pending_payouts ?? 0) + Number(r2.pending_payouts ?? 0),
       } as AdminKPIs;
     },
-    staleTime: 120_000, // 2 min — KPIs don't change rapidly
+    staleTime: 120_000,
     enabled: isAdmin,
   });
 
-  // ─── Query 2: Gestores list (infinite pagination) ───
+  // ─── Query 2: Gestores list (P1 + P2 merged) ───
   const {
     flatData: gestores,
     totalLoaded: gestoresLoaded,
@@ -160,7 +172,28 @@ function AdminContent() {
       }
 
       const { data } = await query;
-      const items = (data as GestorRow[]) || [];
+      let items = (data as GestorRow[]) || [];
+
+      // P2 cross-project: añadir gestores del otro proyecto (solo primera página)
+      if (!cursor) {
+        try {
+          const p2 = await getCrossProjectP2Client();
+          if (p2) {
+            const { data: p2data } = await p2
+              .from("profiles")
+              .select("id, full_name, username, email, phone, role, status, join_date, has_sales_experience, assigned_project")
+              .neq("role", "admin")
+              .order("created_at", { ascending: false })
+              .limit(50);
+            if (p2data) {
+              items = [...items, ...(p2data as GestorRow[])];
+            }
+          }
+        } catch {
+          // P2 no disponible
+        }
+      }
+
       const hasMore = items.length > 20;
       const pageItems = hasMore ? items.slice(0, 20) : items;
       const nextCursor = hasMore && pageItems.length > 0
@@ -169,7 +202,7 @@ function AdminContent() {
 
       return { data: pageItems, nextCursor };
     },
-    staleTime: 120_000, // 2 min
+    staleTime: 120_000,
     enabled: isAdmin,
   });
 
@@ -210,8 +243,15 @@ function AdminContent() {
     setActionLoading(targetUserId + newStatus);
 
     try {
-      const config = getProjectConfig(project);
-      const supabase = client || createLoginClient(config);
+      // Determinar en qué proyecto está el usuario (P2 si assigned_project=2)
+      const targetGestor = gestores.find((g) => g.id === targetUserId);
+      const isP2User = targetGestor?.assigned_project === 2;
+      let supabase = client || createLoginClient(getProjectConfig(project));
+
+      if (isP2User) {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) supabase = p2;
+      }
 
       const { error } = await supabase
         .from("profiles")
@@ -554,7 +594,7 @@ function AdminContent() {
                       <p className="text-xs text-muted-foreground truncate">{g.email}</p>
                       <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
                         {g.phone && <span>📞 +53 {g.phone.replace(/^\+53/, "").trim()}</span>}
-                        <span>🏷️ Proyecto {g.assigned_project}</span>
+                        <span className={`px-1.5 py-0.5 rounded-full font-bold ${g.assigned_project === 2 ? "bg-purple-500/15 text-purple-600 dark:text-purple-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"}`}>P{g.assigned_project}</span>
                         <span>📅 {g.join_date}</span>
                       </div>
                     </div>
