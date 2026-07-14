@@ -121,10 +121,17 @@ function AdminContent() {
       const { data, error } = await supabase.rpc("get_admin_dashboard");
 
       if (error) throw new Error(error.message);
-      return (data as AdminKPIs) || {
-        totalUsers: 0, pendingUsers: 0, activeUsers: 0,
-        totalOrders: 0, pendingOrders: 0, pendingPayouts: 0,
-      };
+      // El RPC devuelve claves en snake_case (total_users, ...);
+      // mapearlas al camelCase que usa AdminKPIs.
+      const raw = (data as Record<string, unknown>) || {};
+      return {
+        totalUsers: Number(raw.total_users ?? 0),
+        pendingUsers: Number(raw.pending_users ?? 0),
+        activeUsers: Number(raw.active_users ?? 0),
+        totalOrders: Number(raw.total_orders ?? 0),
+        pendingOrders: Number(raw.pending_orders ?? 0),
+        pendingPayouts: Number(raw.pending_payouts ?? 0),
+      } as AdminKPIs;
     },
     staleTime: 120_000, // 2 min — KPIs don't change rapidly
     enabled: isAdmin,

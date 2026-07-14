@@ -40,7 +40,14 @@ export function GestorDashboard() {
     queryFn: async (client, uid) => {
       const { data, error } = await client.rpc("get_gestor_dashboard", { p_manager_id: uid });
       if (error) throw new Error(error.message);
-      return (data as DashboardStats) || { totalOrders: 0, pendingOrders: 0, soldOrders: 0, balance: 0 };
+      // El RPC devuelve claves en snake_case; mapearlas a camelCase.
+      const raw = (data as Record<string, unknown>) || {};
+      return {
+        totalOrders: Number(raw.total_orders ?? 0),
+        pendingOrders: Number(raw.pending_orders ?? 0),
+        soldOrders: Number(raw.sold_orders ?? 0),
+        balance: Number(raw.balance ?? 0),
+      } as DashboardStats;
     },
     staleTime: 30_000,
   });
