@@ -160,6 +160,44 @@ export async function registerGestor(
   const supabase = createRegistrationClient(config);
   log(`✅ Cliente creado`);
 
+  // ─── PASO 3.5: Verificar unicidad ANTES de signUp ───
+  // Evita el 500 opaco de la DB (unique constraint violation 23505 en
+  // id_card o username) que el cliente confunde con "error de conexión".
+  // El flujo de registro corre como anónimo (sin acceso a profiles por RLS),
+  // por eso se usa una RPC SECURITY DEFINER. Fallo de la RPC = no fatal.
+  onProgress("Verificando datos...");
+  log(`PASO 3.5: Verificando unicidad (carnet + usuario)...`);
+  let availability: { id_card_taken?: boolean; username_taken?: boolean } | null = null;
+  try {
+    const { data: avail, error: availErr } = await supabase.rpc(
+      "check_registration_available",
+      { p_id_card: values.idCard, p_username: values.username }
+    );
+    if (availErr) {
+      log(`⚠️ Verificación de unicidad omitida: ${availErr.message}`);
+    } else if (avail) {
+      availability = avail as { id_card_taken?: boolean; username_taken?: boolean };
+    }
+  } catch (e: any) {
+    log(`⚠️ Verificación de unicidad omitida: ${e?.message}`);
+  }
+
+  if (availability?.id_card_taken) {
+    log(`❌ Carnet de identidad ya registrado`);
+    throw Object.assign(
+      new Error("Ya existe una cuenta registrada con este carnet de identidad."),
+      { diag }
+    );
+  }
+  if (availability?.username_taken) {
+    log(`❌ Nombre de usuario ya en uso`);
+    throw Object.assign(
+      new Error("Este nombre de usuario ya está en uso. Elige otro."),
+      { diag }
+    );
+  }
+  log(availability ? `✅ Carnet y usuario disponibles` : `⏭️ Sin verificar (continuando)`);
+
   log(`PASO 4: Ejecutando auth.signUp() en P${project}...`);
   log(`Email: ${values.email}`);
 
@@ -248,7 +286,7 @@ export async function registerGestor(
       throw Object.assign(new Error("Correo electrónico inválido."), { diag });
     }
     if (message.includes("password")) {
-      throw Object.assign(new Error("La contraseña no cumple los requisitos (mínimo 6 caracteres)."), { diag });
+      throw Object.assign(new Error("La contraseña no cumple los requisitos (mínimo 8 caracteres)."), { diag });
     }
 
     throw Object.assign(
