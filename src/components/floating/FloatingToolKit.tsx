@@ -33,13 +33,42 @@ export function FloatingToolKit() {
   const [toolResults, setToolResults] = useState<Record<string, string>>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // useMotionValue avoids re-renders during drag — only updates visual position
-  // v4 FIX: Persist position in localStorage so it survives page navigation
+  // ─── Position: top/left (intuitive drag math) ───
+  // Using top/left: finger right → left++ → button moves right ✅
+  // Using top/left: finger down → top++ → button moves down ✅
+  // Previous code used bottom/right which inverted the Y axis.
+
+  const BTN_SIZE = 56; // w-14 = 3.5rem ≈ 56px
+  const MARGIN = 16;
+
+  // Read saved position (v2 format: { top, left })
+  // If old format (v1: { x, y } stored as bottom/right), convert it
   const savedPos = typeof window !== "undefined"
-    ? (() => { try { const s = localStorage.getItem("ftk-pos"); return s ? JSON.parse(s) : null; } catch { return null; } })()
+    ? (() => {
+        try {
+          // Try v2 format first
+          const v2 = localStorage.getItem("ftk-pos-v2");
+          if (v2) return JSON.parse(v2);
+          // Try converting v1 format (x=distance from right, y=distance from bottom)
+          const v1 = localStorage.getItem("ftk-pos");
+          if (v1) {
+            const old = JSON.parse(v1);
+            return {
+              left: window.innerWidth - (old.x ?? MARGIN) - BTN_SIZE,
+              top: window.innerHeight - (old.y ?? MARGIN) - BTN_SIZE,
+            };
+          }
+        } catch { /* ignore */ }
+        return null;
+      })()
     : null;
-  const posX = useMotionValue(savedPos?.x ?? 16);
-  const posY = useMotionValue(savedPos?.y ?? 16);
+
+  const posX = useMotionValue(
+    savedPos?.left ?? (typeof window !== "undefined" ? window.innerWidth - BTN_SIZE - MARGIN : MARGIN)
+  );
+  const posY = useMotionValue(
+    savedPos?.top ?? (typeof window !== "undefined" ? window.innerHeight - BTN_SIZE - MARGIN : MARGIN)
+  );
 
   // Track if a real drag happened (vs simple click) using ref to avoid re-renders
   const didDrag = useRef(false);
@@ -242,12 +271,11 @@ export function FloatingToolKit() {
         didDrag.current = true;
       }
 
-      // CSS `right` grows leftward, CSS `bottom` grows upward.
-      // So both deltas must be SUBTRACTED from the start position
-      // to make pointer movement map to visual movement correctly.
-      const newX = Math.max(8, Math.min(window.innerWidth - 60, dragStart.current.px - dx));
-      const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.py - dy));
-      // Directly set motion values — NO re-render!
+      // With top/left: finger right (dx>0) -> left increases -> moves right OK
+      // With top/left: finger down (dy>0) -> top increases -> moves down OK
+      const newX = Math.max(MARGIN, Math.min(window.innerWidth - BTN_SIZE - MARGIN, dragStart.current.px + dx));
+      const newY = Math.max(MARGIN, Math.min(window.innerHeight - BTN_SIZE - MARGIN, dragStart.current.py + dy));
+      // Directly set motion values - NO re-render!
       posX.set(newX);
       posY.set(newY);
     },
@@ -259,7 +287,7 @@ export function FloatingToolKit() {
     // v4 FIX: Save position to localStorage on drag end
     if (didDrag.current) {
       try {
-        localStorage.setItem("ftk-pos", JSON.stringify({ x: posX.get(), y: posY.get() }));
+        localStorage.setItem("ftk-pos-v2", JSON.stringify({ left: posX.get(), top: posY.get() }));
       } catch { /* localStorage not available */ }
     }
   }, [posX, posY]);
@@ -352,11 +380,11 @@ export function FloatingToolKit() {
         )}
       </AnimatePresence>
 
-      {/* Botón flotante arrastrable — position via useMotionValue (no re-renders) */}
+      {/* Boton flotante arrastrable - position via useMotionValue (top/left) */}
       <motion.div
         ref={containerRef}
         className="fixed z-[80]"
-        style={{ bottom: posY, right: posX }}
+        style={{ left: posX, top: posY }}
       >
         <motion.button
           whileTap={{ scale: 0.9 }}
