@@ -46,7 +46,7 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
       if (isAdmin) {
         const { data } = await client
           .from("profiles")
-          .select("id, full_name, username, role, status, level, manager_code, children_count, total_network_size, avatar_url, last_seen_at, parent_id, path")
+          .select("id, full_name, username, role, status, level, manager_code, children_count, total_network_size, avatar_url, last_seen_at, parent_id, path::text")
           .order("level", { ascending: true })
           .order("full_name", { ascending: true })
           .limit(500);
@@ -76,7 +76,7 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
     queryFn: async (client) => {
       if (!selectedNodeId) return null;
       const [profile, orders, wallet] = await Promise.all([
-        client.from("profiles").select("*").eq("id", selectedNodeId).maybeSingle(),
+        client.from("profiles").select("id, full_name, username, role, status, level, manager_code, children_count, total_network_size, avatar_url, last_seen_at, parent_id, path::text, email, phone, join_date").eq("id", selectedNodeId).maybeSingle(),
         client.from("orders").select("status", { count: "exact", head: true }).eq("manager_id", selectedNodeId),
         client.from("wallet_entries").select("amount, entry_type").eq("manager_id", selectedNodeId),
       ]);
