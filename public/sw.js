@@ -1,5 +1,5 @@
 // Service Worker para YOLE SHOP APP PWA
-// v4 — Offline First: runtime cache for images, API GET cache with TTL, Background Sync
+// v5 — Offline First + forced update for beta devices + update messaging
 //
 // Estrategia:
 //   Navigation  = Network First, cache fallback (offline pages)
@@ -7,14 +7,17 @@
 //   API GET     = Stale-While-Revalidate (30s TTL)
 //   Images      = Cache First (7 day TTL) — Supabase Storage
 //   API POST    = Never cached (always network)
+//
+// v5 FIX: On activate, clear ALL old caches (including beta-era caches).
+// Responds to SKIP_WAITING message from the app update system.
 
-const CACHE_NAME = "yole-shop-v4";
-const ASSETS_CACHE = "yole-assets-v4";
-const API_CACHE = "yole-api-v4";
-const IMAGES_CACHE = "yole-images-v4";
+const CACHE_NAME = "yole-shop-v5";
+const ASSETS_CACHE = "yole-assets-v5";
+const API_CACHE = "yole-api-v5";
+const IMAGES_CACHE = "yole-images-v5";
 
-const API_TTL = 30_000; // 30s for API GET cache
-const IMAGE_TTL = 7 * 24 * 3600_000; // 7 days for images
+const API_TTL = 30_000;
+const IMAGE_TTL = 7 * 24 * 3600_000;
 
 const PRECACHE_ASSETS = [
   "/manifest.json",
@@ -26,26 +29,47 @@ const PRECACHE_ASSETS = [
 
 // ─── Install: precache static assets ───
 self.addEventListener("install", (event) => {
+  // Skip waiting so the new SW activates immediately
+  self.skipWaiting();
+
   event.waitUntil(
     caches.open(ASSETS_CACHE)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
       .catch((err) => {
-        console.warn("[SW v4] Precache falló (no crítico):", err);
+        console.warn("[SW v5] Precache failed (non-critical):", err);
       })
   );
 });
 
-// ─── Activate: clean old caches, take control ───
+// ─── Activate: clean ALL old caches (including beta-era), take control ───
+// v5 FIX: This ensures devices that installed during beta get a clean slate
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME && key !== ASSETS_CACHE && key !== API_CACHE && key !== IMAGES_CACHE)
-          .map((key) => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
+    caches.keys().then((keys) => {
+      // Delete ALL caches that don't match current version
+      const toDelete = keys.filter((key) =>
+        key !== CACHE_NAME &&
+        key !== ASSETS_CACHE &&
+        key !== API_CACHE &&
+        key !== IMAGES_CACHE
+      );
+      // Also delete old v4 caches to force fresh start
+      const oldPrefixes = ["yole-shop-v", "yole-assets-v", "yole-api-v", "yole-images-v"];
+      keys.forEach((key) => {
+        if (oldPrefixes.some((prefix) => key.startsWith(prefix) && key !== CACHE_NAME && key !== ASSETS_CACHE && key !== API_CACHE && key !== IMAGES_CACHE)) {
+          if (!toDelete.includes(key)) toDelete.push(key);
+        }
+      });
+      return Promise.all(toDelete.map((key) => caches.delete(key)));
+    }).then(() => self.clients.claim())
   );
+});
+
+// ─── Message: Handle SKIP_WAITING from app ───
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 // ─── Fetch: route-based strategy ───
@@ -58,6 +82,12 @@ self.addEventListener("fetch", (event) => {
 
   // ─── Supabase API GET → Stale-While-Revalidate ───
   if (url.hostname.includes("supabase.co") && url.pathname.startsWith("/rest/v1/")) {
+    event.respondWith(staleWhileRevalidate(request, API_CACHE, API_TTL));
+    return;
+  }
+
+  // ─── Supabase RPC → Stale-While-Revalidate ───
+  if (url.hostname.includes("supabase.co") && url.pathname.startsWith("/rest/v1/rpc/")) {
     event.respondWith(staleWhileRevalidate(request, API_CACHE, API_TTL));
     return;
   }
@@ -128,7 +158,6 @@ self.addEventListener("fetch", (event) => {
 // ─── Background Sync (if supported) ───
 self.addEventListener("sync", (event) => {
   if (event.tag === "yole-sync-pending") {
-    // Notify all clients to trigger sync
     event.waitUntil(
       self.clients.matchAll().then((clients) => {
         clients.forEach((client) => client.postMessage({ type: "SYNC_PENDING" }));
@@ -158,7 +187,7 @@ async function cacheFirstWithTTL(request, cacheName, ttl) {
       const age = Date.now() - parseInt(dateHeader, 10);
       if (age < ttl) return cached;
     } else {
-      return cached; // No date header, serve anyway
+      return cached;
     }
   }
   try {
@@ -173,7 +202,6 @@ async function cacheFirstWithTTL(request, cacheName, ttl) {
     }
     return response;
   } catch (err) {
-    // Network failed, return stale cache if available
     if (cached) return cached;
     return new Response("", { status: 404 });
   }
@@ -189,13 +217,12 @@ async function staleWhileRevalidate(request, cacheName, ttl) {
     if (dateHeader) {
       const age = Date.now() - parseInt(dateHeader, 10);
       if (age < ttl) {
-        return cached; // Fresh enough, no revalidation needed
+        return cached;
       }
     }
-    staleData = cached; // Stale but usable while revalidating
+    staleData = cached;
   }
 
-  // Revalidate in background
   const fetchPromise = fetch(request)
     .then((response) => {
       if (response.status === 200) {
@@ -209,8 +236,7 @@ async function staleWhileRevalidate(request, cacheName, ttl) {
       }
       return response;
     })
-    .catch(() => staleData); // If fetch fails, return stale
+    .catch(() => staleData);
 
-  // Return stale immediately if available, otherwise wait for fetch
   return staleData || fetchPromise;
 }

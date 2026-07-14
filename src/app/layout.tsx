@@ -6,6 +6,8 @@ import QueryProvider from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ErrorBoundary } from "@/components/security/ErrorBoundary";
 import { SessionProvider } from "@/hooks/useSession";
+import { AppUpdateOverlay } from "@/components/ui/AppUpdateOverlay";
+import { OnboardingBot } from "@/components/onboarding/OnboardingBot";
 
 export const metadata: Metadata = {
   title: "YOLE SHOP",
@@ -111,6 +113,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <QueryProvider>
             <ErrorBoundary>
               <SessionProvider>
+                <AppUpdateOverlay />
+                <OnboardingBot />
                 {children}
               </SessionProvider>
             </ErrorBoundary>
