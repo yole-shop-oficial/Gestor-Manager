@@ -245,15 +245,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             user: session.user,
           });
         } else if (event === "SIGNED_OUT") {
-          // Session was lost (token expired without refresh, or manual sign out)
-          clearProfileCache();
-          logger.setUser(null, null);
-          setState({
-            user: null,
-            client: null,
-            project: null,
-            profile: null,
-            profileLoading: false,
+          // Verify session is truly gone — onAuthStateChange can fire
+          // SIGNED_OUT during refresh race conditions
+          client.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (!currentSession) {
+              clearProfileCache();
+              logger.setUser(null, null);
+              setState({
+                user: null,
+                client: null,
+                project: null,
+                profile: null,
+                profileLoading: false,
+              });
+            }
           });
         }
       }
@@ -265,6 +270,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [state.client, setState]);
 
   // ─── INIT: Check for existing session (runs ONCE) ───
+  // v4 FIX: First try getSession() (local, fast) then refreshSession()
+  // if JWT is expired. Previously only called getUser() which fails
+  // on expired JWT — making the user appear logged out when the
+  // refresh_token was still valid.
   const initDone = useRef(false);
   useEffect(() => {
     if (initDone.current) return;
@@ -278,11 +287,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const config = getProjectConfig(p);
           if (!config.url || !config.anonKey) return null;
           const tempClient = createLoginClient(config);
-          const { data } = await tempClient.auth.getUser();
-          if (data?.user) {
+
+          // Step 1: Check localStorage for existing session (no network call)
+          const { data: { session } } = await tempClient.auth.getSession();
+          if (!session) return null;
+
+          // Step 2: If we have a session, try to validate/refresh it
+          // getUser() validates the JWT server-side — will fail if expired
+          const { data: userData, error: userErr } = await tempClient.auth.getUser();
+
+          if (userData?.user) {
+            // JWT is still valid
             saveUserProject(p);
-            return { user: data.user, client: tempClient, project: p };
+            return { user: userData.user, client: tempClient, project: p };
           }
+
+          // Step 3: JWT expired — try to refresh using refresh_token from localStorage
+          if (userErr && (userErr.message?.includes("expired") || userErr.message?.includes("JWT") || userErr.status === 401)) {
+            console.log("[SessionProvider] JWT expired, attempting refresh...");
+            const { data: refreshData, error: refreshErr } = await tempClient.auth.refreshSession();
+
+            if (refreshErr) {
+              console.warn("[SessionProvider] Refresh failed:", refreshErr.message);
+              // Refresh token also expired — session is truly lost
+              return null;
+            }
+
+            if (refreshData.session?.user) {
+              console.log("[SessionProvider] Session refreshed successfully");
+              saveUserProject(p);
+              return { user: refreshData.session.user, client: tempClient, project: p };
+            }
+          }
+
           return null;
         };
 
@@ -309,7 +346,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             client: result.client,
             project: result.project,
             loading: false,
-            // profile is still null, profileLoading will be set by profile effect
           });
         } else {
           setState({ loading: false, profileLoading: false });
