@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useSupabaseQuery, useRealtime } from "@/hooks";
+import { useSupabaseQuery } from "@/hooks";
 import { useSession } from "@/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Conversation } from "../types";
@@ -23,12 +23,15 @@ export interface ConversationWithPreview extends Conversation {
   other_user_id?: string;
   other_user_role?: string;
   other_user_status?: string;
+  last_read_at?: string | null;
 }
 
 /**
  * Hook to get all conversations AND contacts (network members).
- * Contacts = users in the current user's branch (for managers/admins) 
- * or just admin (for gestores).
+ *
+ * v4 OPTIMIZED: Uses get_chat_overview RPC (1 request) instead of
+ * N+1 pattern (2 + 3*N requests). Contacts fetched separately.
+ * Polling increased from 25s to 45s to reduce Supabase Free tier load.
  */
 export function useConversations() {
   const { user, profile } = useSession();
@@ -42,11 +45,47 @@ export function useConversations() {
   }>({
     key: ["conversations-v2", userId],
     queryFn: async (supabase, uid) => {
-      // 1. Get contacts (users I can chat with)
+      // 1. Get conversations via RPC (1 request instead of 2 + 3*N)
+      const { data: overview, error: rpcErr } = await supabase
+        .rpc("get_chat_overview", { p_user_id: uid });
+
+      const conversations: ConversationWithPreview[] = [];
+
+      if (!rpcErr && overview) {
+        const ov = overview as Record<string, unknown>;
+        const convs = (ov.conversations as ConversationWithPreview[]) || [];
+        conversations.push(...convs);
+      } else if (rpcErr) {
+        console.warn("[useConversations] get_chat_overview RPC failed, using fallback:", rpcErr.message);
+        // Fallback: basic query without N+1 detail
+        const { data: memberships } = await supabase
+          .from("conversation_members")
+          .select("conversation_id, last_read_at")
+          .eq("user_id", uid);
+
+        if (memberships && memberships.length > 0) {
+          const convIds = memberships.map((m) => m.conversation_id);
+          const { data: convs } = await supabase
+            .from("conversations")
+            .select("*")
+            .in("id", convIds)
+            .order("last_message_at", { ascending: false, nullsFirst: false });
+
+          if (convs) {
+            for (const conv of convs) {
+              conversations.push({
+                ...conv,
+                unread_count: 0,
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Get contacts (separate — lightweight, only runs when data is stale)
       let contacts: ContactRow[] = [];
 
       if (isAdmin) {
-        // Admin sees ALL active users
         const { data: allUsers } = await supabase
           .from("profiles")
           .select("id, full_name, username, role, level, status, manager_code, avatar_url")
@@ -55,9 +94,7 @@ export function useConversations() {
           .limit(100);
         contacts = (allUsers as ContactRow[]) || [];
       } else {
-        // Non-admin: get my ancestors + descendants + self
         try {
-          // Get my manager (parent)
           if (profile?.parent_id) {
             const { data: parentData } = await supabase
               .from("profiles")
@@ -67,7 +104,6 @@ export function useConversations() {
             if (parentData) contacts.push(parentData as ContactRow);
           }
 
-          // Get my admin
           const { data: adminData } = await supabase
             .from("profiles")
             .select("id, full_name, username, role, level, status, manager_code, avatar_url")
@@ -78,7 +114,6 @@ export function useConversations() {
             if (!contacts.find(c => c.id === admin.id)) contacts.push(admin);
           }
 
-          // Get my descendants (if I'm a manager)
           const { data: descendants } = await supabase.rpc("get_descendants", { p_user_id: uid });
           if (descendants) {
             const desc = (descendants as ContactRow[]).filter(d => d.id !== uid);
@@ -87,7 +122,6 @@ export function useConversations() {
             }
           }
         } catch {
-          // Fallback: just show admin
           const { data: fallback } = await supabase
             .from("profiles")
             .select("id, full_name, username, role, level, status, manager_code, avatar_url")
@@ -97,96 +131,17 @@ export function useConversations() {
         }
       }
 
-      // 2. Get conversations
-      const { data: memberships } = await supabase
-        .from("conversation_members")
-        .select("conversation_id, last_read_at")
-        .eq("user_id", uid);
-
-      const conversations: ConversationWithPreview[] = [];
-
-      if (memberships && memberships.length > 0) {
-        const convIds = memberships.map((m) => m.conversation_id);
-        const readMap = new Map(memberships.map((m) => [m.conversation_id, m.last_read_at]));
-
-        const { data: convs } = await supabase
-          .from("conversations")
-          .select("*")
-          .in("id", convIds)
-          .order("last_message_at", { ascending: false, nullsFirst: false });
-
-        if (convs) {
-          for (const conv of convs) {
-            const lastRead = readMap.get(conv.id);
-            let unreadQuery = supabase
-              .from("messages")
-              .select("id", { count: "exact", head: true })
-              .eq("conversation_id", conv.id)
-              .neq("sender_id", uid);
-            if (lastRead) unreadQuery = unreadQuery.gt("created_at", lastRead);
-            const { count } = await unreadQuery;
-
-            let otherUserName: string | undefined;
-            let otherUserId: string | undefined;
-            let otherUserRole: string | undefined;
-            let otherUserStatus: string | undefined;
-
-            if (conv.type === "private") {
-              const { data: otherMembers } = await supabase
-                .from("conversation_members")
-                .select("user_id")
-                .eq("conversation_id", conv.id)
-                .neq("user_id", uid)
-                .limit(1);
-
-              if (otherMembers?.[0]) {
-                otherUserId = otherMembers[0].user_id;
-                const { data: profile } = await supabase
-                  .from("profiles")
-                  .select("full_name, username, role, status")
-                  .eq("id", otherUserId)
-                  .single();
-                otherUserName = profile?.full_name || profile?.username || "Usuario";
-                otherUserRole = profile?.role;
-                otherUserStatus = profile?.status;
-              }
-            }
-
-            conversations.push({
-              ...conv,
-              unread_count: count || 0,
-              other_user_name: otherUserName,
-              other_user_id: otherUserId,
-              other_user_role: otherUserRole,
-              other_user_status: otherUserStatus,
-            });
-          }
-        }
-      }
-
       return { conversations, contacts };
     },
-    staleTime: 15_000,
+    staleTime: 30_000, // Increased from 15s
   });
 
-  // Realtime: listen for new messages
-  useRealtime({
-    channel: `conv-list-v2-${userId}`,
-    table: "messages",
-    filter: `or(sender_id.eq.${userId},recipient_id.eq.${userId})`,
-    event: "INSERT",
-    onEvent: () => {
-      queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
-    },
-    enabled: !!userId,
-  });
-
-  // Polling: actualizar conversaciones cada 25s (badges, últimos mensajes)
+  // Polling: actualizar conversaciones cada 45s (increased from 25s)
   useEffect(() => {
     if (!userId) return;
     const id = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
-    }, 25_000);
+    }, 45_000);
     return () => clearInterval(id);
   }, [userId, queryClient]);
 

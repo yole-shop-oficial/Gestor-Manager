@@ -11,7 +11,7 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
           queries: {
             retry: 2,
             gcTime: 10 * 60 * 1000, // 10 min
-            staleTime: 30 * 1000, // 30s default
+            staleTime: 2 * 60 * 1000, // 2 min — increased from 30s to reduce Supabase Free tier load
             refetchOnWindowFocus: false,
           },
         },

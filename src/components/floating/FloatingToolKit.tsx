@@ -34,8 +34,12 @@ export function FloatingToolKit() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // useMotionValue avoids re-renders during drag — only updates visual position
-  const posX = useMotionValue(16);
-  const posY = useMotionValue(16);
+  // v4 FIX: Persist position in localStorage so it survives page navigation
+  const savedPos = typeof window !== "undefined"
+    ? (() => { try { const s = localStorage.getItem("ftk-pos"); return s ? JSON.parse(s) : null; } catch { return null; } })()
+    : null;
+  const posX = useMotionValue(savedPos?.x ?? 16);
+  const posY = useMotionValue(savedPos?.y ?? 16);
 
   // Track if a real drag happened (vs simple click) using ref to avoid re-renders
   const didDrag = useRef(false);
@@ -249,7 +253,13 @@ export function FloatingToolKit() {
 
   const handlePointerUp = useCallback(() => {
     setDragging(false);
-  }, []);
+    // v4 FIX: Save position to localStorage on drag end
+    if (didDrag.current) {
+      try {
+        localStorage.setItem("ftk-pos", JSON.stringify({ x: posX.get(), y: posY.get() }));
+      } catch { /* localStorage not available */ }
+    }
+  }, [posX, posY]);
 
   return (
     <>

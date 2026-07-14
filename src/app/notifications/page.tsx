@@ -3,7 +3,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseInfiniteQuery, invalidate, useRealtime } from "@/hooks";
+import { useSession, useSupabaseInfiniteQuery, invalidate } from "@/hooks";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
@@ -81,24 +81,12 @@ function NotificationsContent() {
     staleTime: 30_000,
   });
 
-  // ─── Single realtime channel for notifications ───
-  useRealtime({
-    channel: `notifs-${userId}`,
-    table: "notifications",
-    filter: `user_id=eq.${userId}`,
-    event: "*",
-    onEvent: () => {
-      invalidate.notifications(queryClient, userId);
-    },
-    enabled: !!userId,
-  });
-
-  // Polling: actualizar notificaciones cada 45s
+  // ─── Polling: actualizar notificaciones cada 60s (increased from 45s) ───
   useEffect(() => {
     if (!userId) return;
     const id = setInterval(() => {
       invalidate.notifications(queryClient, userId);
-    }, 45_000);
+    }, 60_000);
     return () => clearInterval(id);
   }, [userId, queryClient]);
 

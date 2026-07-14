@@ -78,7 +78,7 @@ function WalletContent() {
         entries: (d.entries as WalletEntry[]) || [],
       };
     },
-    staleTime: 30_000,
+    staleTime: 60_000, // 60s — wallet data doesn't change rapidly
   });
 
   const entries = walletData?.entries || [];
@@ -99,7 +99,7 @@ function WalletContent() {
         .limit(10);
       return (data as PayoutRequest[]) || [];
     },
-    staleTime: 30_000,
+    staleTime: 60_000, // 60s
   });
 
   const [showPayoutForm, setShowPayoutForm] = useState(false);

@@ -68,8 +68,9 @@ async function flushToSupabase(): Promise<void> {
       autoRefreshToken: false,
     });
 
-    // Set auth from the current session if available
-    const { data: { session } } = await supabase.auth.getSession();
+    // v4 FIX: No longer call supabase.auth.getSession() on every flush.
+    // The logger client has persistSession: false, so getSession() always returns null.
+    // Instead, pass user_id directly from the module-level currentUserId variable.
 
     const rows = entries.map((e) => ({
       user_id: e.user_id || currentUserId,
@@ -82,7 +83,6 @@ async function flushToSupabase(): Promise<void> {
     const { error } = await supabase.from("app_logs").insert(rows);
 
     if (error) {
-      // If insert fails, add entries back to local buffer for inspection
       console.error("[Logger] Failed to flush logs:", error.message);
     }
   } catch (err) {

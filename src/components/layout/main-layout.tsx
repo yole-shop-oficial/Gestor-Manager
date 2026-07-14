@@ -5,20 +5,36 @@ import { BottomNav } from "./bottom-nav";
 import { FloatingToolKit } from "@/components/floating/FloatingToolKit";
 import { PagePreloader } from "@/components/ui/PagePreloader";
 import { IOSInstallBanner } from "@/components/ui/IOSInstallBanner";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { WifiOff, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSyncEngine } from "@/hooks";
 
+/**
+ * v4 FIX: useSyncEngine no lee IndexedDB en cada mount.
+ * Solo muestra el indicador de sync cuando hay pendientes,
+ * y solo refresca el conteo al conectarse o al hacer click manual.
+ */
 export function MainLayout({ children }: { children: React.ReactNode }) {
   const [isOffline, setIsOffline] = useState(false);
-  const { hasPending, syncNow, state } = useSyncEngine();
+  const [hasPendingState, setHasPendingState] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string>("idle");
+  const { hasPending, syncNow, state, refreshState } = useSyncEngine();
+
+  // Only update pending state when value changes (avoid re-renders from useSyncEngine mount)
+  useEffect(() => {
+    setHasPendingState(hasPending);
+    setSyncStatus(state.status);
+  }, [hasPending, state.status]);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      setIsOffline(false);
+      // Refresh sync state when coming back online
+      refreshState();
+    };
     const handleOffline = () => setIsOffline(true);
 
-    // Estado inicial
     setIsOffline(!navigator.onLine);
 
     window.addEventListener("online", handleOnline);
@@ -27,7 +43,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [refreshState]);
 
   return (
     <PagePreloader>
@@ -55,7 +71,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
 
         {/* Pending sync indicator (when online but has pending ops) */}
         <AnimatePresence>
-          {!isOffline && hasPending && (
+          {!isOffline && hasPendingState && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
@@ -63,13 +79,13 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
               className="bg-orange-500/10 border-b border-orange-500/20 overflow-hidden"
             >
               <div className="flex items-center justify-center gap-2 py-2 px-4">
-                <RefreshCw className={`w-3.5 h-3.5 text-orange-600 dark:text-orange-400 ${state.status === "syncing" ? "animate-spin" : ""}`} />
+                <RefreshCw className={`w-3.5 h-3.5 text-orange-600 dark:text-orange-400 ${syncStatus === "syncing" ? "animate-spin" : ""}`} />
                 <span className="text-xs font-medium text-orange-700 dark:text-orange-300">
-                  {state.status === "syncing"
+                  {syncStatus === "syncing"
                     ? "Sincronizando cambios..."
                     : "Hay cambios pendientes de sincronizar"}
                 </span>
-                {state.status !== "syncing" && (
+                {syncStatus !== "syncing" && (
                   <button
                     onClick={() => syncNow()}
                     className="text-[10px] font-bold text-orange-600 dark:text-orange-400 underline"

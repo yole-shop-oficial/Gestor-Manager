@@ -29,7 +29,7 @@ export function ChatLayout() {
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
-  // ─── Create or find private conversation ───
+  // ─── Create or find private conversation (via atomic RPC) ───
   const ensurePrivateConv = useCallback(async (otherUserId: string) => {
     if (!client || !project || !user) return null;
 
@@ -47,48 +47,17 @@ export function ChatLayout() {
 
       const supabase = client || createLoginClient(getProjectConfig(project));
 
-      // Check existing private conversation
-      const { data: myMemberships, error: memErr } = await supabase
-        .from("conversation_members").select("conversation_id").eq("user_id", userId);
-      
-      if (memErr) {
-        console.warn("[Chat] Error finding memberships:", memErr.message);
+      // Use atomic RPC with advisory lock — eliminates race condition
+      const { data: convId, error: rpcErr } = await supabase
+        .rpc("get_or_create_private_conv", { p_user1: userId, p_user2: targetId });
+
+      if (rpcErr || !convId) {
+        console.warn("[Chat] get_or_create_private_conv failed:", rpcErr?.message);
         return null;
-      }
-
-      if (myMemberships) {
-        for (const m of myMemberships) {
-          const { data: otherMember } = await supabase
-            .from("conversation_members")
-            .select("conversation_id").eq("conversation_id", m.conversation_id).eq("user_id", targetId).maybeSingle();
-          if (otherMember) {
-            const { data: conv } = await supabase
-              .from("conversations").select("id, type").eq("id", m.conversation_id).maybeSingle();
-            if (conv?.type === "private") return conv.id;
-          }
-        }
-      }
-
-      // Create new private conversation
-      const { data: newConv, error: createErr } = await supabase
-        .from("conversations").insert([{ type: "private", created_by: userId }]).select("id").maybeSingle();
-      
-      if (createErr || !newConv) {
-        console.warn("[Chat] Error creating private conversation:", createErr?.message);
-        return null;
-      }
-
-      const { error: addErr } = await supabase.from("conversation_members").insert([
-        { conversation_id: newConv.id, user_id: userId },
-        { conversation_id: newConv.id, user_id: targetId },
-      ]);
-      
-      if (addErr) {
-        console.warn("[Chat] Error adding members:", addErr.message);
       }
 
       queryClient.invalidateQueries({ queryKey: ["conversations-v2", userId] });
-      return newConv.id;
+      return convId as string;
     } catch (err: any) {
       console.warn("[Chat] ensurePrivateConv failed:", err?.message || err);
       return null;
@@ -200,11 +169,24 @@ export function ChatLayout() {
       // Find recipient for private conversations
       const conv = conversations.find(c => c.id === activeConvId);
       if (conv?.type === "private") {
-        const { data: members } = await supabase
-          .from("conversation_members").select("user_id")
-          .eq("conversation_id", activeConvId).neq("user_id", user.id).limit(1);
-        insertData.recipient_id = members?.[0]?.user_id || user.id;
+        // Use other_user_id from conversation data (already resolved by get_chat_overview)
+        if (conv.other_user_id) {
+          insertData.recipient_id = conv.other_user_id;
+        } else {
+          // Fallback: query members only if other_user_id not available
+          const { data: members } = await supabase
+            .from("conversation_members").select("user_id")
+            .eq("conversation_id", activeConvId).neq("user_id", user.id).limit(1);
+          if (members && members.length > 0) {
+            insertData.recipient_id = members[0].user_id;
+          } else {
+            // No valid recipient found — don't send (avoids self-send bug)
+            logger.error("chat_send_no_recipient", { conversationId: activeConvId });
+            return;
+          }
+        }
       } else {
+        // Global chat: sender is also recipient
         insertData.recipient_id = user.id;
       }
 

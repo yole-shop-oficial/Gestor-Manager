@@ -135,7 +135,7 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
 
   const expandAll = () => {
     if (!nodes) return;
-    setExpandedIds(new Set(nodes.filter(n => n.children_count > 0 || (tree.some(t => t.id === n.id && n.level < 2))).map(n => n.id)));
+    setExpandedIds(new Set(nodes.filter(n => (n.children_count > 0 && tree.some(t => t.id === n.id || t.children?.some((c: any) => c.id === n.id))) || n.level < 2).map(n => n.id)));
   };
 
   const collapseAll = () => setExpandedIds(new Set());
@@ -257,7 +257,7 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
               <DetailBadge icon={Package} label="Pedidos" value={selectedNodeDetail.total_orders || 0} />
               <DetailBadge icon={TrendingUp} label="Comisión" value={`$${(selectedNodeDetail.total_commission || 0).toFixed(0)}`} />
               <DetailBadge icon={Network} label="Nivel" value={selectedNodeDetail.level} />
-              <DetailBadge icon={Users} label="Subgestores" value={selectedNodeDetail.children_count || 0} />
+              <DetailBadge icon={Users} label="Subgestores" value={selectedNodeDetail.children?.length || selectedNodeDetail.children_count || 0} />
               <DetailBadge icon={Clock} label="Ingreso" value={selectedNodeDetail.join_date || "—"} />
               <StatusBadge status={selectedNodeDetail.status as any} />
             </div>
@@ -348,7 +348,7 @@ function TreeNodeRow({
           </div>
           <p className="text-[10px] text-muted-foreground truncate">
             @{node.username} · Nivel {node.level}
-            {node.children_count > 0 && ` · ${node.children_count} directos`}
+            {node.children && node.children.length > 0 && ` · ${node.children.length} directos`}
           </p>
         </div>
 

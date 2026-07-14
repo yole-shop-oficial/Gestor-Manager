@@ -124,7 +124,7 @@ function AdminContent() {
         totalOrders: 0, pendingOrders: 0, pendingPayouts: 0,
       };
     },
-    staleTime: 60_000, // 60s
+    staleTime: 120_000, // 2 min — KPIs don't change rapidly
     enabled: isAdmin,
   });
 
@@ -160,7 +160,7 @@ function AdminContent() {
 
       return { data: pageItems, nextCursor };
     },
-    staleTime: 60_000, // 60s
+    staleTime: 120_000, // 2 min
     enabled: isAdmin,
   });
 
@@ -191,7 +191,7 @@ function AdminContent() {
       }
       return payoutsWithNames;
     },
-    staleTime: 30_000, // 30s
+    staleTime: 60_000, // 60s — payouts don't change rapidly
     enabled: isAdmin,
   });
 
