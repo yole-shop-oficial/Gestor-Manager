@@ -52,6 +52,7 @@ function NewOrderContent() {
     delivery_price: "",
     delivery_time: "",
     payment_type: "transferencia",
+    currency: "cup",
     notes: "",
   });
 
@@ -162,6 +163,7 @@ function NewOrderContent() {
         delivery_price: Number(form.delivery_price) || 0,
         delivery_time: form.delivery_time.trim() || null,
         payment_type: form.payment_type,
+        currency: form.currency,
         notes: form.notes.trim() || null,
         status: "pending",
         chain: chain,
@@ -235,7 +237,7 @@ function NewOrderContent() {
           El pedido de <strong>{form.product_name}</strong> fue registrado. El admin será notificado.
         </p>
         <div className="flex gap-3">
-          <button onClick={() => { setSuccess(false); setForm({ product_name: "", base_price: "", sale_price: "", size: "", customer_name: "", customer_phone: "", customer_address: "", delivery_price: "", delivery_time: "", payment_type: "transferencia", notes: "" }); setImages([]); }} className="px-6 py-3 card-filled rounded-2xl font-bold text-sm">Otro pedido</button>
+          <button onClick={() => { setSuccess(false); setForm({ product_name: "", base_price: "", sale_price: "", size: "", customer_name: "", customer_phone: "", customer_address: "", delivery_price: "", delivery_time: "", payment_type: "transferencia", currency: "cup", notes: "" }); setImages([]); }} className="px-6 py-3 card-filled rounded-2xl font-bold text-sm">Otro pedido</button>
           <button onClick={() => router.push("/orders")} className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold text-sm">Ver pedidos</button>
         </div>
       </div>
@@ -286,6 +288,17 @@ function NewOrderContent() {
                 <button key={type} type="button" onClick={() => handleChange("payment_type", type)}
                   className={`py-2.5 rounded-[14px] text-xs font-bold transition-all ${form.payment_type === type ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-glow" : "card-filled text-muted-foreground"}`}>
                   {type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold pl-1">Moneda de venta</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["cup", "usd"] as const).map((cur) => (
+                <button key={cur} type="button" onClick={() => handleChange("currency", cur)}
+                  className={`py-2.5 rounded-[14px] text-xs font-bold transition-all ${form.currency === cur ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg" : "card-filled text-muted-foreground"}`}>
+                  {cur === "cup" ? "🇨🇺 CUP" : "💵 USD"}
                 </button>
               ))}
             </div>

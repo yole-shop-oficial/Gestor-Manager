@@ -24,7 +24,7 @@ import {
   ChevronRight,
   ChevronDown,
   Package,
-  Eye, Network,
+  Eye, Network, Edit3, Save, X, DollarSign,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -108,6 +108,8 @@ function AdminContent() {
   const { user, client, project, profile, profileLoading } = useSession();
   const queryClient = useQueryClient();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [editingWallet, setEditingWallet] = useState<string | null>(null); // gestor id
+  const [walletEdits, setWalletEdits] = useState<{ cup: string; usd: string; cup_transf: string }>({ cup: "0", usd: "0", cup_transf: "0" });
 
   const isAdmin = profile?.role === "admin";
   const userId = user?.id ?? "";
@@ -270,10 +272,19 @@ function AdminContent() {
         logger.error("admin_change_payout_status_failed", { payoutId, newStatus, error: error.message });
       } else {
         if (newStatus === "approved") {
+          // Get the payout's currency to create matching wallet entry
+          const { data: payoutData } = await supabase
+            .from("payout_requests")
+            .select("currency, withdrawal_method")
+            .eq("id", payoutId)
+            .single();
+          const payoutCurrency = (payoutData as any)?.currency || "cup";
+          
           await supabase.from("wallet_entries").insert([{
             manager_id: managerId,
             amount: -amount,
             entry_type: "payout" as any,
+            currency: payoutCurrency,
             description: `Retiro aprobado #${payoutId.slice(0, 8)}`,
           }]);
         }
@@ -284,6 +295,72 @@ function AdminContent() {
       }
     } catch (err) {
       console.error("[ADMIN] Error cambiando payout status:", err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ─── Admin: Edit gestor wallet balances ───
+  const startEditWallet = async (gestorId: string) => {
+    if (!client || !project) return;
+    try {
+      const config = getProjectConfig(project);
+      const supabase = client || createLoginClient(config);
+      const { data } = await supabase.rpc("get_wallet_full", { p_manager_id: gestorId });
+      const d = (data as Record<string, unknown>) || {};
+      const b = (d.balances as Record<string, number>) || {};
+      setWalletEdits({
+        cup: String(b.cup ?? 0),
+        usd: String(b.usd ?? 0),
+        cup_transf: String(b.cup_transf ?? 0),
+      });
+      setEditingWallet(gestorId);
+    } catch {
+      setWalletEdits({ cup: "0", usd: "0", cup_transf: "0" });
+      setEditingWallet(gestorId);
+    }
+  };
+
+  const saveWalletEdit = async (gestorId: string) => {
+    if (!client || !project) return;
+    setActionLoading(gestorId + "wallet");
+    try {
+      const config = getProjectConfig(project);
+      const supabase = client || createLoginClient(config);
+
+      // Get current balances to calculate adjustments
+      const { data } = await supabase.rpc("get_wallet_full", { p_manager_id: gestorId });
+      const d = (data as Record<string, unknown>) || {};
+      const current = (d.balances as Record<string, number>) || { cup: 0, usd: 0, cup_transf: 0 };
+
+      const entries: any[] = [];
+      for (const [cur, newVal] of Object.entries(walletEdits)) {
+        const target = parseFloat(newVal) || 0;
+        const currentVal = current[cur] || 0;
+        const diff = target - currentVal;
+        if (Math.abs(diff) > 0.001) {
+          entries.push({
+            manager_id: gestorId,
+            amount: diff,
+            entry_type: "adjustment",
+            currency: cur,
+            description: `Ajuste manual por administrador`,
+          });
+        }
+      }
+
+      if (entries.length > 0) {
+        const { error } = await supabase.from("wallet_entries").insert(entries);
+        if (error) {
+          alert("Error: " + error.message);
+        } else {
+          invalidate.wallet(queryClient, gestorId);
+          invalidate.adminDashboard(queryClient);
+        }
+      }
+      setEditingWallet(null);
+    } catch (err: any) {
+      alert("Error guardando billetera: " + (err?.message || err));
     } finally {
       setActionLoading(null);
     }
@@ -522,6 +599,42 @@ function AdminContent() {
                         Reactivar
                       </button>
                     </div>
+                  )}
+
+                  {/* ─── Edit Wallet ─── */}
+                  {editingWallet === g.id ? (
+                    <div className="space-y-2 pt-2 border-t border-border/30">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Editar Billetera</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["cup", "usd", "cup_transf"] as const).map((cur) => (
+                          <div key={cur} className="space-y-1">
+                            <label className="text-[9px] text-muted-foreground">{cur === "cup" ? "🇨🇺 CUP" : cur === "usd" ? "💵 USD" : "🏦 CUP/Transf"}</label>
+                            <input
+                              type="number" step="0.01"
+                              value={walletEdits[cur]}
+                              onChange={(e) => setWalletEdits(prev => ({ ...prev, [cur]: e.target.value }))}
+                              className="w-full card-filled border border-border/40 rounded-xl py-2 px-3 text-sm outline-none focus:border-primary"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => saveWalletEdit(g.id)} disabled={actionLoading === g.id + "wallet"}
+                          className="flex-1 py-2 rounded-[14px] bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50">
+                          {actionLoading === g.id + "wallet" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          Guardar
+                        </button>
+                        <button onClick={() => setEditingWallet(null)}
+                          className="flex-1 py-2 rounded-[14px] card-filled text-xs font-bold flex items-center justify-center gap-1">
+                          <X className="w-3.5 h-3.5" /> Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => startEditWallet(g.id)}
+                      className="w-full py-2 rounded-[14px] card-filled text-xs font-bold text-muted-foreground flex items-center justify-center gap-1.5 hover:text-primary transition">
+                      <Edit3 className="w-3.5 h-3.5" /> Editar Billetera
+                    </button>
                   )}
                 </motion.div>
               ))}
