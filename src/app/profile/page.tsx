@@ -4,6 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery } from "@/hooks";
+import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import { clearUserProject } from "@/services/supabase/roundRobin";
 import { clearSession } from "@/hooks/useSession";
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
@@ -340,11 +341,20 @@ function TabOrders({ userId }: { userId: string }) {
 // TAB: NETWORK (MI RED)
 // ═══════════════════════════════════════════════
 function TabNetwork({ userId, isManager }: { userId: string; isManager: boolean }) {
+  const { profile } = useSession();
+  const isAdmin = profile?.role === "admin";
   const { data: stats, isLoading: statsLoading } = useSupabaseQuery<NetworkStats>({
     key: ["network-stats", userId],
     queryFn: async (client, uid) => {
-      const { data } = await client.rpc("get_network_stats", { p_user_id: uid });
-      return (data as NetworkStats) || { total_gestores: 0, total_managers: 0, total_network: 0, total_commission: 0 };
+      const { data: d1 } = await client.rpc("get_network_stats", { p_user_id: uid });
+      const r1 = (d1 as NetworkStats) || { total_gestores: 0, total_managers: 0, total_network: 0, total_commission: 0 };
+      if (!isAdmin) return r1;
+      let r2: NetworkStats = { total_gestores: 0, total_managers: 0, total_network: 0, total_commission: 0 };
+      try {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) { const { data: d2 } = await p2.rpc("get_network_stats", { p_user_id: uid }); r2 = (d2 as NetworkStats) || r2; }
+      } catch { /* P2 */ }
+      return { total_gestores: (r1.total_gestores||0)+(r2.total_gestores||0), total_managers: (r1.total_managers||0)+(r2.total_managers||0), total_network: (r1.total_network||0)+(r2.total_network||0), total_commission: (r1.total_commission||0)+(r2.total_commission||0) };
     },
     staleTime: 60_000,
     enabled: isManager,
@@ -353,8 +363,15 @@ function TabNetwork({ userId, isManager }: { userId: string; isManager: boolean 
   const { data: descendants, isLoading: descLoading } = useSupabaseQuery<DescendantRow[]>({
     key: ["network-descendants", userId],
     queryFn: async (client, uid) => {
-      const { data } = await client.rpc("get_descendants", { p_user_id: uid });
-      return (data as DescendantRow[]) || [];
+      const { data: d1 } = await client.rpc("get_descendants", { p_user_id: uid });
+      let all = (d1 as DescendantRow[]) || [];
+      if (isAdmin) {
+        try {
+          const p2 = await getCrossProjectP2Client();
+          if (p2) { const { data: d2 } = await p2.rpc("get_descendants", { p_user_id: uid }); if (d2) { const ex = new Set(all.map(d=>d.id)); all = [...all, ...(d2 as DescendantRow[]).filter(d=>!ex.has(d.id))]; } }
+        } catch { /* P2 */ }
+      }
+      return all;
     },
     staleTime: 60_000,
     enabled: isManager,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useSupabaseQuery } from "@/hooks";
+import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import React, { useMemo } from "react";
 import {
   TrendingUp, Users, ShoppingCart, DollarSign,
@@ -34,10 +35,26 @@ export function AdminAnalytics() {
         supabase.from("payout_requests").select("status"),
       ]);
 
-      const orders = ordersRes.data || [];
-      const gestores = gestoresRes.data || [];
-      const wallets = walletRes.data || [];
-      const payouts = payoutsRes.data || [];
+      let orders = ordersRes.data || [];
+      let gestores = gestoresRes.data || [];
+      let wallets = walletRes.data || [];
+      let payouts = payoutsRes.data || [];
+
+      try {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) {
+          const [p2o, p2g, p2w, p2p] = await Promise.all([
+            p2.from("orders").select("status, sale_price, base_price, delivery_price, manager_id, created_at").order("created_at", { ascending: false }).limit(500),
+            p2.from("profiles").select("id, full_name, status, role").neq("role", "admin"),
+            p2.from("wallet_entries").select("amount, entry_type, created_at, manager_id").order("created_at", { ascending: false }).limit(500),
+            p2.from("payout_requests").select("status"),
+          ]);
+          orders = [...orders, ...(p2o.data || [])];
+          gestores = [...gestores, ...(p2g.data || [])];
+          wallets = [...wallets, ...(p2w.data || [])];
+          payouts = [...payouts, ...(p2p.data || [])];
+        }
+      } catch { /* P2 */ }
 
       const totals = {
         totalOrders: orders.length,

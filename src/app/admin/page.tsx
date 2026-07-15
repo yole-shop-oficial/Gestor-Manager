@@ -210,34 +210,47 @@ function AdminContent() {
     enabled: isAdmin,
   });
 
-  // ─── Query 3: Payouts ───
+  // ─── Query 3: Payouts (P1 + P2 merged) ───
   const { data: payouts = [], isLoading: payoutsLoading } = useSupabaseQuery<PayoutRow[]>({
     key: ["admin-payouts"],
     queryFn: async (supabase) => {
-      const { data } = await supabase
+      const { data: p1data } = await supabase
         .from("payout_requests")
         .select("id, manager_id, amount, status, notes, created_at")
         .in("status", ["pending", "approved"])
         .order("created_at", { ascending: false })
         .limit(20);
+      let allPayouts: PayoutRow[] = (p1data as PayoutRow[]) || [];
+      try {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) {
+          const { data: p2data } = await p2
+            .from("payout_requests")
+            .select("id, manager_id, amount, status, notes, created_at")
+            .in("status", ["pending", "approved"])
+            .order("created_at", { ascending: false })
+            .limit(20);
+          allPayouts = [...allPayouts, ...((p2data as PayoutRow[]) || [])];
+        }
+      } catch { /* P2 */ }
 
-      let payoutsWithNames: PayoutRow[] = (data as PayoutRow[]) || [];
+      let payoutsWithNames = allPayouts;
       if (payoutsWithNames.length > 0) {
         const managerIds = [...new Set(payoutsWithNames.map((p) => p.manager_id))];
-        const { data: managers } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", managerIds);
-
+        const { data: managers } = await supabase.from("profiles").select("id, full_name").in("id", managerIds);
         const nameMap = new Map((managers || []).map((m: any) => [m.id, m.full_name]));
-        payoutsWithNames = payoutsWithNames.map((p) => ({
-          ...p,
-          manager_name: nameMap.get(p.manager_id) || "Desconocido",
-        }));
+        try {
+          const p2 = await getCrossProjectP2Client();
+          if (p2) {
+            const { data: p2m } = await p2.from("profiles").select("id, full_name").in("id", managerIds);
+            for (const m of (p2m || [])) nameMap.set((m as any).id, (m as any).full_name);
+          }
+        } catch { /* P2 */ }
+        payoutsWithNames = payoutsWithNames.map((p) => ({ ...p, manager_name: nameMap.get(p.manager_id) || "Desconocido" }));
       }
       return payoutsWithNames;
     },
-    staleTime: 60_000, // 60s — payouts don't change rapidly
+    staleTime: 60_000,
     enabled: isAdmin,
   });
 

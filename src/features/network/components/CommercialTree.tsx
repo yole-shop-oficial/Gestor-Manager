@@ -8,6 +8,7 @@ import {
   ArrowUp, ArrowDown, AlertCircle, BarChart3,
 } from "lucide-react";
 import { useSession, useSupabaseQuery } from "@/hooks";
+import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import { StatusBadge, LoadingSpinner, EmptyState, ErrorPanel } from "@/components/shared";
 import Link from "next/link";
 import type { TreeNode, NetworkStats } from "../types";
@@ -44,13 +45,30 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
     key: ["commercial-tree", userId, queryFn],
     queryFn: async (client, uid) => {
       if (isAdmin) {
-        const { data } = await client
+        const { data: p1data } = await client
           .from("profiles")
           .select("id, full_name, username, role, status, level, manager_code, children_count, total_network_size, avatar_url, last_seen_at, parent_id, path::text")
           .order("level", { ascending: true })
           .order("full_name", { ascending: true })
           .limit(500);
-        return (data as TreeNode[]) || [];
+        let allNodes = (p1data as TreeNode[]) || [];
+        try {
+          const p2 = await getCrossProjectP2Client();
+          if (p2) {
+            const { data: p2data } = await p2
+              .from("profiles")
+              .select("id, full_name, username, role, status, level, manager_code, children_count, total_network_size, avatar_url, last_seen_at, parent_id, path::text")
+              .order("level", { ascending: true })
+              .order("full_name", { ascending: true })
+              .limit(500);
+            if (p2data) {
+              const p1Ids = new Set(allNodes.map(n => n.id));
+              const p2New = (p2data as TreeNode[]).filter(n => !p1Ids.has(n.id));
+              allNodes = [...allNodes, ...p2New];
+            }
+          }
+        } catch { /* P2 no disponible */ }
+        return allNodes;
       } else {
         const { data } = await client.rpc("get_descendants", { p_user_id: uid });
         return (data as TreeNode[]) || [];
@@ -63,8 +81,23 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
   const { data: stats } = useSupabaseQuery<NetworkStats>({
     key: ["commercial-tree-stats", userId, queryFn],
     queryFn: async (client, uid) => {
-      const { data } = await client.rpc("get_network_stats", { p_user_id: uid });
-      return (data as NetworkStats) || { total_gestores: 0, total_managers: 0, total_network: 0, total_commission: 0 };
+      const { data: d1 } = await client.rpc("get_network_stats", { p_user_id: uid });
+      const r1 = (d1 as NetworkStats) || { total_gestores: 0, total_managers: 0, total_network: 0, total_commission: 0 };
+      if (!isAdmin) return r1;
+      let r2: NetworkStats = { total_gestores: 0, total_managers: 0, total_network: 0, total_commission: 0 };
+      try {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) {
+          const { data: d2 } = await p2.rpc("get_network_stats", { p_user_id: uid });
+          r2 = (d2 as NetworkStats) || r2;
+        }
+      } catch { /* P2 */ }
+      return {
+        total_gestores: (r1.total_gestores || 0) + (r2.total_gestores || 0),
+        total_managers: (r1.total_managers || 0) + (r2.total_managers || 0),
+        total_network: (r1.total_network || 0) + (r2.total_network || 0),
+        total_commission: (r1.total_commission || 0) + (r2.total_commission || 0),
+      };
     },
     staleTime: 60_000,
     enabled: !!userId,
