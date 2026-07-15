@@ -702,7 +702,7 @@ function AdminContent() {
           <Link href="/network" className="text-xs font-bold text-primary">Ver completo →</Link>
         </div>
         <div className="card-filled rounded-2xl p-4">
-          <CommercialTreeLazy />
+          <CommercialTreeLazy isAdmin />
         </div>
       </motion.div>
 
