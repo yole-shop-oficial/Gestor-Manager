@@ -91,6 +91,11 @@ function SettingsContent() {
 
   const handleLogout = async () => {
     if (client) await client.auth.signOut();
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("yole-auth-p1");
+      localStorage.removeItem("yole-auth-p2");
+      localStorage.removeItem("yole-cross-p2");
+    }
     clearUserProject();
     clearSession();
     router.push("/welcome");

@@ -36,14 +36,12 @@ export async function loginWithRoundRobin(
   if (savedProject) {
     const result = await tryLogin(savedProject, email, password);
     if (result.success && result.user && result.client) {
-      // Directly update session singleton — no onAuthStateChange dependency
       setSession(result.user, result.client, savedProject);
       return { error: null, project: savedProject };
     }
-    // Si falla con credenciales incorrectas (no error de conexión), no reintentar
-    if (result.isAuthError && !result.isConnectionError) {
-      return { error: result.error!, project: null };
-    }
+    // Si falla con credenciales incorrectas, NO abortar: el usuario
+    // podría tener cuenta en el OTRO proyecto (caso del admin espejo).
+    // Solo abortar si es un error de conexión irreversible.
   }
 
   // ─── Intentar Proyecto 1 ───
@@ -53,9 +51,6 @@ export async function loginWithRoundRobin(
     setSession(result1.user, result1.client, 1);
     return { error: null, project: 1 };
   }
-  if (result1.isAuthError && !result1.isConnectionError) {
-    return { error: result1.error!, project: null };
-  }
 
   // ─── Intentar Proyecto 2 ───
   const result2 = await tryLogin(2, email, password);
@@ -64,8 +59,10 @@ export async function loginWithRoundRobin(
     setSession(result2.user, result2.client, 2);
     return { error: null, project: 2 };
   }
-  if (result2.isAuthError && !result2.isConnectionError) {
-    return { error: result2.error!, project: null };
+
+  // ─── Ambos fallaron — determinar tipo de error ───
+  if (result1.isAuthError || result2.isAuthError) {
+    return { error: "Correo o contraseña incorrectos.", project: null };
   }
 
   // ─── Ningún proyecto funcionó ───
