@@ -10,6 +10,7 @@ import {
 import { useSession, useSupabaseQuery } from "@/hooks";
 import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import { StatusBadge, LoadingSpinner, EmptyState, ErrorPanel } from "@/components/shared";
+import { UserProfileModal } from "@/components/shared/UserProfileModal";
 import Link from "next/link";
 import type { TreeNode, NetworkStats } from "../types";
 
@@ -35,6 +36,8 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const [modalUserId, setModalUserId] = useState<string | null>(null);
+  const [modalProject, setModalProject] = useState<number>(1);
 
   // Fetch ALL nodes (admin) or descendants (manager/gestor)
   const queryFn = isAdmin
@@ -302,12 +305,21 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
               </div>
             )}
 
-            <Link href={`/profile`} className="block text-center text-xs font-bold text-primary py-2">
-              Ver perfil completo →
-            </Link>
+            <button
+              onClick={() => { setModalUserId(selectedNodeDetail.id); setModalProject(selectedNodeDetail.assigned_project || 1); }}
+              className="w-full py-2.5 rounded-[14px] bg-primary/15 text-primary text-xs font-bold flex items-center justify-center gap-1.5 transition"
+            >
+              <Eye className="w-3.5 h-3.5" /> Ver perfil completo
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Modal de perfil completo */}
+      <UserProfileModal
+        userId={modalUserId}
+        assignedProject={modalProject}
+        onClose={() => setModalUserId(null)}
+      />
     </div>
   );
 }

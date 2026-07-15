@@ -3,11 +3,12 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
-import { useSession, useSupabaseQuery, useSupabaseInfiniteQuery, invalidate } from "@/hooks";
+import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
 import React, { useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
 import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
+import { UserProfileModal } from "@/components/shared/UserProfileModal";
 import { StatusBadge, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import { logger } from "@/lib/logger";
 import {
@@ -116,6 +117,8 @@ function AdminContent() {
 
   const isAdmin = profile?.role === "admin";
   const userId = user?.id ?? "";
+  const [viewProfileId, setViewProfileId] = useState<string | null>(null);
+  const [viewProfileProject, setViewProfileProject] = useState<number>(1);
 
   // ─── Query 1: KPIs via SQL function (P1 + P2 merged) ───
   const { data: kpis, isLoading: kpisLoading, error: kpisError } = useSupabaseQuery<AdminKPIs>({
@@ -153,60 +156,32 @@ function AdminContent() {
     enabled: isAdmin,
   });
 
-  // ─── Query 2: Gestores list (P1 + P2 merged) ───
-  const {
-    flatData: gestores,
-    totalLoaded: gestoresLoaded,
-    isLoading: gestoresLoading,
-    fetchNextPage: fetchMoreGestores,
-    hasNextPage: hasMoreGestores,
-    isFetchingNextPage: fetchingMoreGestores,
-  } = useSupabaseInfiniteQuery<GestorRow>({
+  // ─── Query 2: Gestores list (P1 + P2 merged, sin paginación) ───
+  const { data: gestores = [], isLoading: gestoresLoading } = useSupabaseQuery<GestorRow[]>({
     key: ["admin-gestores"],
-    queryFn: async (supabase, _uid, cursor) => {
-      let query = supabase
+    queryFn: async (supabase) => {
+      const { data: p1data } = await supabase
         .from("profiles")
         .select("id, full_name, username, email, phone, role, status, join_date, has_sales_experience, assigned_project")
         .neq("role", "admin")
         .order("created_at", { ascending: false })
-        .limit(21);
-
-      if (cursor) {
-        query = query.lt("created_at", cursor);
-      }
-
-      const { data } = await query;
-      let items = (data as GestorRow[]) || [];
-
-      // P2 cross-project: añadir gestores del otro proyecto (solo primera página)
-      if (!cursor) {
-        try {
-          const p2 = await getCrossProjectP2Client();
-          if (p2) {
-            const { data: p2data } = await p2
-              .from("profiles")
-              .select("id, full_name, username, email, phone, role, status, join_date, has_sales_experience, assigned_project")
-              .neq("role", "admin")
-              .order("created_at", { ascending: false })
-              .limit(50);
-            if (p2data) {
-              items = [...items, ...(p2data as GestorRow[])];
-            }
-          }
-        } catch {
-          // P2 no disponible
+        .limit(200);
+      let all = (p1data as GestorRow[]) || [];
+      try {
+        const p2 = await getCrossProjectP2Client();
+        if (p2) {
+          const { data: p2data } = await p2
+            .from("profiles")
+            .select("id, full_name, username, email, phone, role, status, join_date, has_sales_experience, assigned_project")
+            .neq("role", "admin")
+            .order("created_at", { ascending: false })
+            .limit(200);
+          if (p2data) all = [...all, ...(p2data as GestorRow[])];
         }
-      }
-
-      const hasMore = items.length > 20;
-      const pageItems = hasMore ? items.slice(0, 20) : items;
-      const nextCursor = hasMore && pageItems.length > 0
-        ? pageItems[pageItems.length - 1].join_date || pageItems[pageItems.length - 1].id
-        : null;
-
-      return { data: pageItems, nextCursor };
+      } catch { /* P2 */ }
+      return all;
     },
-    staleTime: 120_000,
+    staleTime: 60_000,
     enabled: isAdmin,
   });
 
@@ -574,7 +549,7 @@ function AdminContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Gestores registrados</h2>
-          <span className="text-xs text-muted-foreground">{gestoresLoaded} cargados</span>
+          <span className="text-xs text-muted-foreground">{gestores.length} en total</span>
         </div>
 
         {gestoresLoading ? (
@@ -695,33 +670,23 @@ function AdminContent() {
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => startEditWallet(g.id)}
-                      className="w-full py-2 rounded-[14px] card-filled text-xs font-bold text-muted-foreground flex items-center justify-center gap-1.5 hover:text-primary transition">
-                      <Edit3 className="w-3.5 h-3.5" /> Editar Billetera
-                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => startEditWallet(g.id)}
+                        className="flex-1 py-2 rounded-[14px] card-filled text-xs font-bold text-muted-foreground flex items-center justify-center gap-1.5 hover:text-primary transition">
+                        <Edit3 className="w-3.5 h-3.5" /> Billetera
+                      </button>
+                      <button onClick={() => { setViewProfileId(g.id); setViewProfileProject(g.assigned_project); }}
+                        className="flex-1 py-2 rounded-[14px] bg-primary/15 text-primary text-xs font-bold flex items-center justify-center gap-1.5 transition">
+                        <Eye className="w-3.5 h-3.5" /> Ver perfil
+                      </button>
+                    </div>
                   )}
                 </motion.div>
               ))}
             </div>
 
-            {/* Load more gestores button */}
-            {hasMoreGestores && (
-              <button
-                onClick={() => fetchMoreGestores()}
-                disabled={fetchingMoreGestores}
-                className="w-full py-3 rounded-[16px] card-filled text-sm font-semibold text-muted-foreground flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {fetchingMoreGestores ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-                {fetchingMoreGestores ? "Cargando..." : `Cargar más gestores (${gestoresLoaded} cargados)`}
-              </button>
-            )}
-
-            {!hasMoreGestores && gestores.length > 0 && (
-              <p className="text-xs text-muted-foreground text-center py-2">Todos los gestores cargados ({gestoresLoaded})</p>
+            {gestores.length > 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">{gestores.length} gestores en total (P1 + P2)</p>
             )}
           </>
         )}
@@ -750,6 +715,13 @@ function AdminContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
         <MonitoringDashboard />
       </motion.div>
+
+      {/* Modal de perfil completo */}
+      <UserProfileModal
+        userId={viewProfileId}
+        assignedProject={viewProfileProject}
+        onClose={() => setViewProfileId(null)}
+      />
     </div>
   );
 }
