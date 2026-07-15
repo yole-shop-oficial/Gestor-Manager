@@ -88,6 +88,8 @@ interface PayoutRow {
 
 interface AdminKPIs {
   totalUsers: number;
+  totalGestores: number;
+  totalAdmins: number;
   pendingUsers: number;
   activeUsers: number;
   totalOrders: number;
@@ -138,6 +140,8 @@ function AdminContent() {
 
       return {
         totalUsers: Number(r1.total_users ?? 0) + Number(r2.total_users ?? 0),
+        totalGestores: Number(r1.total_gestores ?? 0) + Number(r2.total_gestores ?? 0),
+        totalAdmins: Number(r1.total_admins ?? 0) + Number(r2.total_admins ?? 0),
         pendingUsers: Number(r1.pending_users ?? 0) + Number(r2.pending_users ?? 0),
         activeUsers: Number(r1.active_users ?? 0) + Number(r2.active_users ?? 0),
         totalOrders: Number(r1.total_orders ?? 0) + Number(r2.total_orders ?? 0),
@@ -461,7 +465,7 @@ function AdminContent() {
 
       {/* Stats Grid */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-2 gap-3">
-        <AdminStat icon={Users} label="Usuarios" value={kpis?.totalUsers ?? 0} gradient="from-indigo-500 to-purple-600" loading={kpisLoading} />
+        <AdminStat icon={Users} label="Gestores" value={kpis?.totalGestores ?? 0} gradient="from-indigo-500 to-purple-600" loading={kpisLoading} />
         <AdminStat icon={UserCheck} label="Pendientes" value={kpis?.pendingUsers ?? 0} gradient="from-yellow-500 to-orange-500" urgent={kpis?.pendingUsers ? kpis.pendingUsers > 0 : false} loading={kpisLoading} />
         <AdminStat icon={ShoppingCart} label="Pedidos" value={kpis?.totalOrders ?? 0} gradient="from-blue-500 to-cyan-500" loading={kpisLoading} />
         <AdminStat icon={Wallet} label="Retiros pend." value={kpis?.pendingPayouts ?? 0} gradient="from-emerald-500 to-teal-500" urgent={kpis?.pendingPayouts ? kpis.pendingPayouts > 0 : false} loading={kpisLoading} />

@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════
+   CRÍTICO: Hacer que el variant dark: de Tailwind 4 responda
+   a la CLASE .dark (next-themes), no a prefers-color-scheme.
+   Sin esto, TODOS los dark: utilities dejan de funcionar cuando
+   el usuario cambia el tema manualmente → botones grises, textos
+   invisibles, diseño roto en dark mode.
+   ═══════════════════════════════════════════════════════════ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
