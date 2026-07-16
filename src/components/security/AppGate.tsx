@@ -2,22 +2,22 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { isSetupComplete, getSettings, loadSavedAccent, clearAllAppCache } from "@/features/setup/settings";
+import { isSetupComplete, getSettings, loadSavedAccent } from "@/features/setup/settings";
 import { PinLock } from "@/components/security/PinLock";
 
 // ═══════════════════════════════════════════════════════════
-// APP GATE — Controls entry to the app
+// APP GATE v2 — Sin console.error override ni auto-reload
+// ═══════════════════════════════════════════════════════════
+// PROBLEMA v1: Reemplazaba console.error global para contar
+// errores y disparar clearAllAppCache + reload. Si un error se
+// repetía (como React #310), esto creaba un BUCLE de reload
+// infinito del que el usuario no podía salir.
 //
-// Flow:
-// 1. Is setup complete? → No → redirect to /setup
-// 2. Is PIN set? → Yes → show PinLock
-// 3. Is user logged in? → No → redirect to /welcome
-// 4. All good → render children
+// SOLUCIÓN v2: Quitar completamente el override. El ErrorBoundary
+// ya captura errores de render y ofrece un botón de limpieza.
 // ═══════════════════════════════════════════════════════════
 
 const PUBLIC_ROUTES = ["/welcome", "/login", "/register", "/setup"];
-const ERROR_CACHE_KEY = "yole_error_count";
-const MAX_ERRORS_BEFORE_CLEAR = 3;
 
 export function AppGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -32,10 +32,10 @@ export function AppGate({ children }: { children: React.ReactNode }) {
     loadSavedAccent();
   }, []);
 
-  // Check setup + PIN on mount
+  // Check setup + PIN — solo cuando cambia pathname
   useEffect(() => {
     const setupDone = isSetupComplete();
-    
+
     if (!setupDone && pathname !== "/setup") {
       setNeedsSetup(true);
       setChecking(false);
@@ -49,77 +49,25 @@ export function AppGate({ children }: { children: React.ReactNode }) {
     }
 
     setChecking(false);
-  }, [pathname, router]);
+    // router es estable en App Router; no incluirlo para evitar re-runs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
-  // ─── Auto cache clear on errors ───
-  useEffect(() => {
-    const originalError = console.error;
-    let errorCount = 0;
-
-    console.error = (...args: any[]) => {
-      originalError.apply(console, args);
-      
-      // Count critical errors
-      const msg = args.join(" ").toLowerCase();
-      const isCritical = 
-        msg.includes("chunk") || 
-        msg.includes("failed to fetch") || 
-        msg.includes("network error") ||
-        msg.includes("minified react error");
-
-      if (isCritical) {
-        errorCount++;
-        if (errorCount >= MAX_ERRORS_BEFORE_CLEAR) {
-          console.log("[CACHE] Auto-clearing due to repeated errors");
-          clearAllAppCache().then(() => {
-            // Force reload after cache clear
-            window.location.reload();
-          });
-        }
-      }
-    };
-
-    return () => {
-      console.error = originalError;
-    };
-  }, []);
-
-  // Handle global unhandled errors → auto clear cache
-  useEffect(() => {
-    const handleUnhandledError = (event: ErrorEvent) => {
-      const msg = event.message?.toLowerCase() || "";
-      if (
-        msg.includes("chunk") ||
-        msg.includes("loading css") ||
-        msg.includes("loading module") ||
-        msg.includes("minified react error")
-      ) {
-        console.log("[CACHE] Auto-clearing due to unhandled error:", event.message);
-        clearAllAppCache().then(() => {
-          window.location.reload();
-        });
-      }
-    };
-
-    window.addEventListener("error", handleUnhandledError);
-    return () => window.removeEventListener("error", handleUnhandledError);
-  }, []);
-
-  // ─── Loading ───
+  // Loading
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-dvh flex items-center justify-center bg-background">
         <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
       </div>
     );
   }
 
-  // ─── Setup not complete ───
+  // Setup not complete
   if (needsSetup && pathname !== "/setup") {
-    return null; // redirecting
+    return null;
   }
 
-  // ─── PIN Lock ───
+  // PIN Lock
   if (needsPin && !unlocked) {
     return <PinLock onUnlock={() => setUnlocked(true)} />;
   }

@@ -76,10 +76,10 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Dark mode: fondo con gradiente sutil */
+/* Dark mode: fondo con gradiente sutil (sin background-attachment: fixed
+   que causa líneas horizontales y artefactos en Chrome/Samsung Android) */
 .dark body {
   background: linear-gradient(180deg, #050816 0%, #0a0e27 30%, #0f0a1a 100%);
-  background-attachment: fixed;
 }
 
 input, textarea {
@@ -200,9 +200,7 @@ input, textarea {
 }
 
 .dark .card-filled {
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(15, 23, 42, 0.75);
   border: 1px solid rgba(148, 163, 184, 0.08);
   box-shadow:
     0 4px 16px -4px rgba(0, 0, 0, 0.5),
@@ -212,28 +210,49 @@ input, textarea {
 /* ═══════════════════════════════════════════════════════════
    SURFACE — Para superficies intermedias (header, nav)
    ═══════════════════════════════════════════════════════════ */
+/* surface-blur: fondo sólido por defecto (compatible Android),
+   blur solo con @supports para navegadores que lo soportan bien */
 .surface-blur {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .dark .surface-blur {
-  background: rgba(5, 8, 22, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(5, 8, 22, 0.92);
   border-color: rgba(148, 163, 184, 0.08);
+}
+
+@supports (backdrop-filter: blur(12px)) and (not (-webkit-appearance: none)) {
+  .surface-blur {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .dark .surface-blur {
+    background: rgba(5, 8, 22, 0.85);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
    ANIMACIONES
    ═══════════════════════════════════════════════════════════ */
-* {
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* transition-timing-function removido del selector universal *.
+   Antes: * { transition-timing-function: cubic-bezier(...) }
+   Esto forzaba al navegador a calcular transiciones en cada nodo
+   del DOM → GPU stress, lag y batería en Android. */
 
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Viewport dinámico para Android — reemplaza 100vh que incluye
+   la barra del navegador y corta contenido */
+.min-h-dvh {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
 }
 
 @keyframes float {
@@ -291,39 +310,10 @@ input, textarea {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PARTÍCULAS DE FONDO para dark mode
+   FONDO DARK — Gradiente estático (sin partículas animadas)
+   Eliminado dark-bg-particles con float 8s/10s infinite que
+   causaba GPU stress y drenaba batería en Android.
    ═══════════════════════════════════════════════════════════ */
-.dark-bg-particles {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-
-.dark-bg-particles::before {
-  content: '';
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
-  top: -200px;
-  right: -200px;
-  animation: float 8s ease-in-out infinite;
-}
-
-.dark-bg-particles::after {
-  content: '';
-  position: absolute;
-  width: 500px;
-  height: 500px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.05) 0%, transparent 70%);
-  bottom: -150px;
-  left: -150px;
-  animation: float 10s ease-in-out infinite reverse;
-}
 
 /* ═══════════════════════════════════════════════════════════
    BADGES Y STATUS — Mejor contraste en dark

@@ -45,7 +45,7 @@ export function PinLock({ onUnlock }: PinLockProps) {
   }, [pin, handlePinSubmit]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-background p-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

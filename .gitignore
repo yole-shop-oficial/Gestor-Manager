@@ -64,3 +64,4 @@ scripts/audit_db.py
 scripts/audit_v2.py
 scripts/inspect_schema.py
 scripts/apply_migration.py
+scripts/inspect_a2_m4.py

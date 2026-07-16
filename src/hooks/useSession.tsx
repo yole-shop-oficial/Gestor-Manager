@@ -466,7 +466,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isPending: state.profile?.status === "pending",
       refreshProfile,
     }),
-    [state, refreshProfile]
+    // v2: deps individuales en vez de [state] completo.
+    // state es un nuevo objeto en cada setState, pero si los campos
+    // son iguales, useMemo NO recalculará → menos re-renders globales.
+    [state.user, state.client, state.project, state.profile,
+     state.loading, state.profileLoading, refreshProfile]
   );
 
   return (

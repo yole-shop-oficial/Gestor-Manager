@@ -27,7 +27,7 @@ export function AppLoader({ error, onRetry, message, details }: Props) {
   const clientDiag = mounted ? getClientDiagnostics() : { totalClients: 0, storageKeys: [] };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#0a0e27] via-[#1a1040] to-[#0a0e27] text-white relative overflow-hidden">
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-gradient-to-br from-[#0a0e27] via-[#1a1040] to-[#0a0e27] text-white relative overflow-hidden">
       {/* Partículas de fondo */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[10%] left-[15%] w-2 h-2 bg-indigo-400/40 rounded-full animate-pulse" style={{ animationDelay: "0s" }} />

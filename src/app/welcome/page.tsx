@@ -302,7 +302,7 @@ function WelcomeContent() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden">
+    <div className="min-h-dvh flex flex-col relative overflow-hidden">
       {/* ── Background ── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         {/* Gradient mesh */}

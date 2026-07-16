@@ -3,98 +3,95 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // ============================================================
-// CROSS-PROJECT ADMIN — Permite al admin ver/gestionar P1 Y P2
+// CROSS-PROJECT ADMIN v2 — Acceso P2 sin re-auth paralela
 // ============================================================
-// PROBLEMA: Cada usuario vive en UN proyecto. El admin (P1) no
-// puede ver a los gestores del P2 porque son bases de datos
-// separadas.
+// PROBLEMA v1: getCrossProjectP2Client() se llamaba 7+ veces en
+// paralelo desde /admin. Cada llamada intentaba signInWithPassword.
+// Esto causaba cascadas de errores y React #310.
 //
-// SOLUCIÓN: El admin tiene una cuenta espejo en P2 (mismo user_id,
-// role=admin). Este servicio autentica al admin en P2 de forma
-// transparente y devuelve un cliente con sesión activa.
-//
-// ⚠️ CRÍTICO: Este cliente usa persistSession: FALSE y un
-// storageKey SEPARADO ("yole-cross-p2"). Si usara el mismo
-// storageKey que el login (AUTH_P2), interferiría con el
-// SessionProvider: al recargar, la app pensaría que el usuario
-// es de P2 y el login fallaría con 400 (password real ≠ sync).
+// SOLUCIÓN v2: Una sola promesa cacheada (authPromise). La primera
+// llamada autentica; las demás esperan la MISMA promesa. Resultado:
+// 1 solo signIn, sin importar cuántos componentes lo llamen.
 // ============================================================
 
 const P2_SYNC_PASSWORD = "YoleAdmin2026!Sync";
 const CROSS_PROJECT_STORAGE_KEY = "yole-cross-p2";
 
 let p2Client: SupabaseClient | null = null;
-let p2AuthInProgress = false;
-let p2AuthFailed = false;
+let authPromise: Promise<SupabaseClient | null> | null = null;
 
 /**
  * Devuelve un cliente autenticado para P2 (Proyecto 2).
- * Autentica automáticamente con la cuenta admin espejo.
- * Si la autenticación falla, devuelve null (no rompe la app).
  *
- * Usa persistSession: false + storageKey único → NO interfiere
- * con el SessionProvider ni el login flow principal.
+ * v2: Usa una promesa cacheada. La PRIMERA llamada autentica; todas
+ * las demás (paralelas o posteriores) reutilizan el MISMO cliente
+ * autenticado. Solo se hace 1 signInWithPassword por sesión.
+ *
+ * Si la sesión expira (1h), se re-autentica automáticamente.
  */
-export async function getCrossProjectP2Client(): Promise<SupabaseClient | null> {
-  // Si ya tenemos un cliente con sesión activa, reutilizarlo
+export function getCrossProjectP2Client(): Promise<SupabaseClient | null> {
+  // Fast path: cliente ya autenticado con sesión activa
   if (p2Client) {
-    const { data: { session } } = await p2Client.auth.getSession();
-    if (session) return p2Client;
-    // Sesión expirada — re-autenticar abajo
+    return p2Client.auth.getSession().then(({ data: { session } }) => {
+      if (session) return p2Client!;
+      // Sesión expirada — limpiar y re-autenticar
+      p2Client = null;
+      authPromise = null;
+      return doAuth();
+    });
   }
 
-  if (p2AuthFailed) return null;
-  if (p2AuthInProgress) {
-    let tries = 0;
-    while (p2AuthInProgress && tries < 50) {
-      await new Promise((r) => setTimeout(r, 100));
-      tries++;
-    }
-    return p2Client;
-  }
+  // Si ya hay una autenticación en curso, esperarla (no duplicar)
+  if (authPromise) return authPromise;
 
+  return doAuth();
+}
+
+/** Autenticación real — solo se ejecuta una vez por sesión. */
+function doAuth(): Promise<SupabaseClient | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL_2;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_2;
-  if (!url || !key) return null;
+  if (!url || !key) return Promise.resolve(null);
 
-  p2AuthInProgress = true;
-  try {
-    p2Client = createClient(url, key, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        storageKey: CROSS_PROJECT_STORAGE_KEY,
-      },
-    });
+  authPromise = (async () => {
+    try {
+      p2Client = createClient(url, key, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          storageKey: CROSS_PROJECT_STORAGE_KEY,
+        },
+      });
 
-    const { error } = await p2Client.auth.signInWithPassword({
-      email: "junmoxia41@gmail.com",
-      password: P2_SYNC_PASSWORD,
-    });
+      const { error } = await p2Client.auth.signInWithPassword({
+        email: "junmoxia41@gmail.com",
+        password: P2_SYNC_PASSWORD,
+      });
 
-    if (error) {
-      console.warn("[CROSS-PROJECT] No se pudo autenticar admin en P2:", error.message);
-      p2AuthFailed = true;
-      p2AuthInProgress = false;
+      if (error) {
+        console.warn("[CROSS-PROJECT] P2 auth falló:", error.message);
+        p2Client = null;
+        authPromise = null;
+        return null;
+      }
+
+      console.log("[CROSS-PROJECT] ✅ Admin autenticado en P2 (1 sola vez)");
+      return p2Client;
+    } catch (err) {
+      console.warn("[CROSS-PROJECT] Error:", err);
+      p2Client = null;
+      authPromise = null;
       return null;
     }
+  })();
 
-    console.log("[CROSS-PROJECT] ✅ Admin autenticado en P2");
-    p2AuthInProgress = false;
-    return p2Client;
-  } catch (err) {
-    console.warn("[CROSS-PROJECT] Error autenticando P2:", err);
-    p2AuthFailed = true;
-    p2AuthInProgress = false;
-    return null;
-  }
+  return authPromise;
 }
 
 /**
- * Resetea el estado de autenticación P2 (para reintentar tras un fallo).
+ * Resetea el estado de autenticación P2.
  */
 export function resetCrossProjectAuth(): void {
   p2Client = null;
-  p2AuthFailed = false;
-  p2AuthInProgress = false;
+  authPromise = null;
 }

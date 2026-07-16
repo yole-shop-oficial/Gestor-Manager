@@ -51,12 +51,12 @@ export default function LoginPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
+    <div className="min-h-dvh flex flex-col bg-background relative overflow-hidden">
       {/* Fondo decorativo */}
       <div className="absolute -top-40 -right-40 w-[400px] h-[400px] bg-indigo-500/8 dark:bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -left-40 w-[400px] h-[400px] bg-purple-500/8 dark:bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
       {/* Partículas extra en dark */}
-      <div className="dark-bg-particles" />
+      {/* Partículas eliminadas (causaban GPU stress en Android) */}
 
       {/* Botón volver */}
       <motion.div
