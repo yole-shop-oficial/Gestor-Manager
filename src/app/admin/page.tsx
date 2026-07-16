@@ -53,6 +53,17 @@ const MonitoringDashboard = dynamic(
   }
 );
 
+const AdminOrdersLazy = dynamic(
+  () => import("@/components/dashboard/AdminOrders").then((m) => ({ default: m.AdminOrders })),
+  {
+    loading: () => (
+      <div className="flex justify-center py-8">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    ),
+  }
+);
+
 const CommercialTreeLazy = dynamic(
   () => import("@/features/network/components/CommercialTree").then((m) => ({ default: m.CommercialTree })),
   {
@@ -690,6 +701,11 @@ function AdminContent() {
             )}
           </>
         )}
+      </motion.div>
+
+      {/* Gestión de Pedidos */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+        <AdminOrdersLazy />
       </motion.div>
 
       {/* Árbol Comercial */}
