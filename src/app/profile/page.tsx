@@ -256,11 +256,21 @@ function TabInfo({ profile, userId, genderLabel, roleLabel, managerCode, level, 
 // TAB: WALLET
 // ═══════════════════════════════════════════════
 function TabWallet({ userId }: { userId: string }) {
-  const { data, isLoading, error } = useSupabaseQuery<WalletSummary>({
-    key: ["profile-wallet", userId],
+  const { data, isLoading, error } = useSupabaseQuery<{
+    balances: { cup: number; usd: number; cup_transf: number };
+    total_commissions: { cup: number; usd: number; cup_transf: number };
+    total_payouts: { cup: number; usd: number; cup_transf: number };
+  }>({
+    key: ["profile-wallet-full", userId],
     queryFn: async (client, uid) => {
-      const { data } = await client.from("manager_wallet_summary").select("*").eq("manager_id", uid).maybeSingle();
-      return ((data as WalletSummary) || { balance: 0, total_commissions: 0, total_payouts: 0 });
+      const { data, error } = await client.rpc("get_wallet_full", { p_manager_id: uid });
+      if (error) throw new Error(error.message);
+      const d = data as Record<string, any>;
+      return {
+        balances: d.balances || { cup: 0, usd: 0, cup_transf: 0 },
+        total_commissions: d.total_commissions || { cup: 0, usd: 0, cup_transf: 0 },
+        total_payouts: d.total_payouts || { cup: 0, usd: 0, cup_transf: 0 },
+      };
     },
     staleTime: 30_000,
   });
@@ -268,15 +278,45 @@ function TabWallet({ userId }: { userId: string }) {
   if (isLoading) return <LoadingSpinner variant="muted" />;
   if (error) return <ErrorPanel title="Error" message={error.message} compact />;
 
+  const currencies = [
+    { key: "cup" as const, name: "Efectivo CUP", icon: "🇨🇺", style: "from-emerald-500 to-teal-600" },
+    { key: "usd" as const, name: "Efectivo USD", icon: "💵", style: "from-blue-500 to-indigo-600" },
+    { key: "cup_transf" as const, name: "CUP Transf.", icon: "🏦", style: "from-violet-500 to-purple-600" },
+  ];
+
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white">
-        <p className="text-sm text-white/70">Saldo disponible</p>
-        <p className="text-3xl font-extrabold mt-1">${fmt(data?.balance, 2)}</p>
-        <div className="flex gap-4 mt-3">
-          <div><p className="text-[10px] text-white/60">Comisiones</p><p className="text-sm font-bold">${fmt(data?.total_commissions, 2)}</p></div>
-          <div><p className="text-[10px] text-white/60">Retiros</p><p className="text-sm font-bold">${fmt(data?.total_payouts, 2)}</p></div>
-        </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3">
+        {currencies.map((c) => {
+          const balance = Number(data?.balances?.[c.key]) || 0;
+          const commission = Number(data?.total_commissions?.[c.key]) || 0;
+          const payout = Number(data?.total_payouts?.[c.key]) || 0;
+          return (
+            <div key={c.key} className={`rounded-2xl bg-gradient-to-br ${c.style} p-4 text-white space-y-2`}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-white/80 font-medium flex items-center gap-1">
+                  <span>{c.icon}</span> {c.name}
+                </span>
+                <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold uppercase">
+                  {c.key === "cup_transf" ? "Transf" : c.key}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <p className="text-2xl font-extrabold">${fmt(balance, 2)}</p>
+                <div className="flex gap-3 text-right">
+                  <div>
+                    <p className="text-[9px] text-white/60">Comisiones</p>
+                    <p className="text-xs font-bold">${fmt(commission, 2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-white/60">Retiros</p>
+                    <p className="text-xs font-bold">${fmt(payout, 2)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       <Link href="/wallet" className="block card-filled rounded-2xl p-4 flex items-center justify-between">
         <span className="text-sm font-bold">Ver billetera completa</span>

@@ -96,6 +96,8 @@ interface PayoutRow {
   status: "pending" | "approved" | "paid" | "rejected";
   notes: string | null;
   created_at: string;
+  currency?: string;
+  withdrawal_method?: string;
   manager_name?: string;
 }
 
@@ -203,7 +205,7 @@ function AdminContent() {
     queryFn: async (supabase) => {
       const { data: p1data } = await supabase
         .from("payout_requests")
-        .select("id, manager_id, amount, status, notes, created_at")
+        .select("id, manager_id, amount, status, notes, created_at, currency, withdrawal_method")
         .in("status", ["pending", "approved"])
         .order("created_at", { ascending: false })
         .limit(20);
@@ -213,7 +215,7 @@ function AdminContent() {
         if (p2) {
           const { data: p2data } = await p2
             .from("payout_requests")
-            .select("id, manager_id, amount, status, notes, created_at")
+            .select("id, manager_id, amount, status, notes, created_at, currency, withdrawal_method")
             .in("status", ["pending", "approved"])
             .order("created_at", { ascending: false })
             .limit(20);
@@ -506,8 +508,20 @@ function AdminContent() {
                   <Wallet className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold">${fmt(p.amount, 2)}</p>
-                  <p className="text-xs text-muted-foreground">{p.manager_name}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-semibold">${fmt(p.amount, 2)}</p>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-accent text-accent-foreground rounded-full">
+                      {(p.currency || "cup").toUpperCase()}
+                    </span>
+                    {p.withdrawal_method && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {p.withdrawal_method === "cash_usd" ? "💵 Efectivo USD" :
+                         p.withdrawal_method === "transfer_cup" ? "🏦 Transferencia CUP" :
+                         "🇨🇺 Efectivo CUP"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{p.manager_name}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {new Date(p.created_at).toLocaleDateString("es-CU")}
                     {p.notes ? ` · ${p.notes}` : ""}
