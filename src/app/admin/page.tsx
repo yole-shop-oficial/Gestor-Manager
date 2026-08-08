@@ -11,6 +11,7 @@ import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import { UserProfileModal } from "@/components/shared/UserProfileModal";
 import { StatusBadge, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import { logger } from "@/lib/logger";
+import { fmt } from "@/lib/utils";
 import {
   Users,
   ShoppingCart,
@@ -505,7 +506,7 @@ function AdminContent() {
                   <Wallet className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold">${p.amount.toFixed(2)}</p>
+                  <p className="text-sm font-semibold">${fmt(p.amount, 2)}</p>
                   <p className="text-xs text-muted-foreground">{p.manager_name}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {new Date(p.created_at).toLocaleDateString("es-CU")}

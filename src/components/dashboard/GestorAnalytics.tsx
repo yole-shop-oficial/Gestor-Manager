@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useSupabaseQuery } from "@/hooks";
+import { fmt } from "@/lib/utils";
 import React, { useMemo } from "react";
 import { ShoppingCart, DollarSign, TrendingUp, BarChart3 } from "lucide-react";
 import { LoadingSpinner, ErrorPanel } from "@/components/shared";
@@ -64,7 +65,7 @@ export function GestorAnalytics() {
       <div className="grid grid-cols-2 gap-3">
         <MiniKPI icon={ShoppingCart} label="Pedidos" value={data.totalOrders} color="text-blue-500" />
         <MiniKPI icon={TrendingUp} label="Conversión" value={`${data.conversionRate}%`} color="text-green-500" />
-        <MiniKPI icon={DollarSign} label="Comisiones" value={`$${data.totalCommission.toFixed(0)}`} color="text-purple-500" />
+        <MiniKPI icon={DollarSign} label="Comisiones" value={`$${fmt(data.totalCommission, 0)}`} color="text-purple-500" />
         <MiniKPI icon={BarChart3} label="Vendidos" value={data.soldOrders} color="text-emerald-500" />
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useSession, useSupabaseQuery } from "@/hooks";
 import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
+import { fmt } from "@/lib/utils";
 import React, { useMemo } from "react";
 import {
   TrendingUp, Users, ShoppingCart, DollarSign,
@@ -101,8 +102,8 @@ export function AdminAnalytics() {
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
         <KPI icon={ShoppingCart} label="Pedidos" value={data.totals.totalOrders} gradient="from-blue-500 to-cyan-500" />
-        <KPI icon={DollarSign} label="Ingresos" value={`$${data.totals.totalRevenue.toFixed(0)}`} gradient="from-emerald-500 to-green-500" />
-        <KPI icon={TrendingUp} label="Comisiones" value={`$${data.totals.totalCommission.toFixed(0)}`} gradient="from-violet-500 to-purple-500" />
+        <KPI icon={DollarSign} label="Ingresos" value={`$${fmt(data.totals.totalRevenue, 0)}`} gradient="from-emerald-500 to-green-500" />
+        <KPI icon={TrendingUp} label="Comisiones" value={`$${fmt(data.totals.totalCommission, 0)}`} gradient="from-violet-500 to-purple-500" />
         <KPI icon={Users} label="Gestores activos" value={data.totals.activeGestores} gradient="from-orange-500 to-red-500" />
       </div>
 
@@ -125,7 +126,7 @@ export function AdminAnalytics() {
                 <p className="text-sm font-semibold truncate">{g.name}</p>
                 <p className="text-[10px] text-muted-foreground">{g.pedidos} pedidos</p>
               </div>
-              <span className="text-sm font-bold text-green-600 dark:text-green-400">${g.comision.toFixed(0)}</span>
+              <span className="text-sm font-bold text-green-600 dark:text-green-400">${fmt(g.comision, 0)}</span>
             </div>
           ))}
           {data.topGestores.length === 0 && <EmptyState icon={Users} title="Sin datos aún" className="!p-4 !rounded-2xl border-0" />}

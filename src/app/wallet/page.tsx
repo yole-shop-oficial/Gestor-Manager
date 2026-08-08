@@ -4,6 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { fmt } from "@/lib/utils";
 import React, { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectConfig, createLoginClient } from "@/services/supabase/roundRobin";
@@ -137,7 +138,7 @@ function WalletContent() {
 
   // Determine which currency the withdrawal method uses
   const payoutCurrency: Currency = payoutMethod === "cash_usd" ? "usd" : payoutMethod === "transfer_cup" ? "cup_transf" : "cup";
-  const availableBalance = walletData?.balances?.[payoutCurrency] ?? 0;
+  const availableBalance = Number(walletData?.balances?.[payoutCurrency]) || 0;
 
   const submitPayout = async () => {
     if (!user || !client || !project) return;
@@ -147,7 +148,7 @@ function WalletContent() {
       return;
     }
     if (amount > availableBalance) {
-      setMessage({ type: "error", text: `No puedes solicitar más de tu saldo disponible en ${CURRENCY_LABELS[payoutCurrency]} ($${availableBalance.toFixed(2)}).` });
+      setMessage({ type: "error", text: `No puedes solicitar más de tu saldo disponible en ${CURRENCY_LABELS[payoutCurrency]} ($${fmt(availableBalance, 2)}).` });
       return;
     }
 
@@ -265,7 +266,7 @@ function WalletContent() {
               />
             </div>
             <p className="text-[10px] text-muted-foreground pl-1">
-              Disponible: {CURRENCY_ICONS[payoutCurrency]} ${availableBalance.toFixed(2)} {CURRENCY_LABELS[payoutCurrency]}
+              Disponible: {CURRENCY_ICONS[payoutCurrency]} ${fmt(availableBalance, 2)} {CURRENCY_LABELS[payoutCurrency]}
             </p>
           </div>
 
@@ -322,7 +323,7 @@ function WalletContent() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">
-                  {CURRENCY_ICONS[p.currency || "cup"]} ${p.amount.toFixed(2)} {CURRENCY_LABELS[p.currency || "cup"]}
+                  {CURRENCY_ICONS[p.currency || "cup"]} ${fmt(p.amount, 2)} {CURRENCY_LABELS[p.currency || "cup"]}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   {WITHDRAWAL_METHODS.find(m => m.id === (p.withdrawal_method || "cash_cup"))?.label || "Retiro"}
@@ -361,7 +362,7 @@ function WalletContent() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">
-                  {e.entry_type === "commission" ? "+" : "-"}${Math.abs(e.amount).toFixed(2)} {CURRENCY_LABELS[e.currency || "cup"]}
+                  {e.entry_type === "commission" ? "+" : "-"}${fmt(Math.abs(Number(e.amount)), 2)} {CURRENCY_LABELS[e.currency || "cup"]}
                 </p>
                 <p className="text-[10px] text-muted-foreground truncate">
                   {e.description || (e.entry_type === "commission" ? (e.source_level != null ? `Comisión Nivel ${e.source_level + 1}` : "Comisión por venta") : e.entry_type === "payout" ? "Retiro" : "Ajuste")}
@@ -400,10 +401,10 @@ function CurrencyCard({ currency, balance, commission, payout }: {
       <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full" />
       <div className="relative z-10">
         <p className="text-[10px] text-white/70 font-medium">{CURRENCY_ICONS[currency]} {CURRENCY_LABELS[currency]}</p>
-        <p className="text-xl font-extrabold mt-0.5">${balance.toFixed(2)}</p>
+        <p className="text-xl font-extrabold mt-0.5">${fmt(balance, 2)}</p>
         <div className="flex items-center gap-2 mt-2 text-[9px] text-white/60">
-          <span>+${commission.toFixed(2)}</span>
-          <span>-${payout.toFixed(2)}</span>
+          <span>+${fmt(commission, 2)}</span>
+          <span>-${fmt(payout, 2)}</span>
         </div>
       </div>
     </motion.div>

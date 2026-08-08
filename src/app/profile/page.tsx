@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery } from "@/hooks";
 import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
+import { fmt } from "@/lib/utils";
 import { clearUserProject } from "@/services/supabase/roundRobin";
 import { clearSession } from "@/hooks/useSession";
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
@@ -271,10 +272,10 @@ function TabWallet({ userId }: { userId: string }) {
     <div className="space-y-3">
       <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white">
         <p className="text-sm text-white/70">Saldo disponible</p>
-        <p className="text-3xl font-extrabold mt-1">${(data?.balance || 0).toFixed(2)}</p>
+        <p className="text-3xl font-extrabold mt-1">${fmt(data?.balance, 2)}</p>
         <div className="flex gap-4 mt-3">
-          <div><p className="text-[10px] text-white/60">Comisiones</p><p className="text-sm font-bold">${(data?.total_commissions || 0).toFixed(2)}</p></div>
-          <div><p className="text-[10px] text-white/60">Retiros</p><p className="text-sm font-bold">${(data?.total_payouts || 0).toFixed(2)}</p></div>
+          <div><p className="text-[10px] text-white/60">Comisiones</p><p className="text-sm font-bold">${fmt(data?.total_commissions, 2)}</p></div>
+          <div><p className="text-[10px] text-white/60">Retiros</p><p className="text-sm font-bold">${fmt(data?.total_payouts, 2)}</p></div>
         </div>
       </div>
       <Link href="/wallet" className="block card-filled rounded-2xl p-4 flex items-center justify-between">
@@ -324,7 +325,7 @@ function TabOrders({ userId }: { userId: string }) {
             <p className="text-[10px] text-muted-foreground">{new Date(o.created_at).toLocaleDateString("es-CU")}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-bold">${Number(o.sale_price).toFixed(2)}</p>
+            <p className="text-sm font-bold">${fmt(o.sale_price, 2)}</p>
             <StatusBadge status={o.status as any} size="sm" />
           </div>
         </Link>
@@ -389,7 +390,7 @@ function TabNetwork({ userId, isManager }: { userId: string; isManager: boolean 
       <div className="grid grid-cols-3 gap-2">
         <StatCard icon={Users} label="Gestores" value={stats?.total_gestores || 0} color="text-blue-500" />
         <StatCard icon={Shield} label="Managers" value={stats?.total_managers || 0} color="text-purple-500" />
-        <StatCard icon={DollarSign} label="Comisión" value={`$${(stats?.total_commission || 0).toFixed(0)}`} color="text-green-500" />
+        <StatCard icon={DollarSign} label="Comisión" value={`$${fmt(stats?.total_commission, 0)}`} color="text-green-500" />
       </div>
 
       {/* Descendants list */}

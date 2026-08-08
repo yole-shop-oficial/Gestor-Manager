@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { fmt } from "@/lib/utils";
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
@@ -106,7 +107,7 @@ export function GestorDashboard() {
             <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Saldo disponible</span>
             {statsLoading && <Loader2 className="w-3 h-3 animate-spin text-white/50" />}
           </div>
-          <p className="text-3xl font-black tracking-tight mb-3">${(stats?.balance ?? 0).toFixed(2)}</p>
+          <p className="text-3xl font-black tracking-tight mb-3">${fmt(stats?.balance, 2)}</p>
           <div className="flex items-center gap-4 text-xs text-white/70">
             <span className="flex items-center gap-1"><Package className="w-3 h-3" /> {stats?.soldOrders ?? 0} vendidos</span>
             <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {stats?.pendingOrders ?? 0} pendientes</span>
@@ -118,14 +119,14 @@ export function GestorDashboard() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="grid grid-cols-3 gap-3">
         <StatCard icon={ShoppingCart} label="Pedidos" value={stats?.totalOrders ?? 0} gradient="from-blue-500 to-cyan-500" loading={statsLoading} />
         <StatCard icon={CheckCircle2} label="Vendidos" value={stats?.soldOrders ?? 0} gradient="from-emerald-500 to-green-500" loading={statsLoading} />
-        <StatCard icon={TrendingUp} label="Comisión" value={`$${(stats?.balance ?? 0).toFixed(0)}`} gradient="from-violet-500 to-purple-500" loading={statsLoading} />
+        <StatCard icon={TrendingUp} label="Comisión" value={`$${fmt(stats?.balance, 0)}`} gradient="from-violet-500 to-purple-500" loading={statsLoading} />
       </motion.div>
 
       {/* Acciones rápidas */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="space-y-2">
         <h2 className="text-sm font-semibold pl-1">Acciones rápidas</h2>
         <QuickAction icon={ShoppingCart} label="Ver mis pedidos" desc={`${stats?.totalOrders ?? 0} pedidos registrados`} href="/orders" gradient="from-blue-500 to-cyan-500" />
-        <QuickAction icon={Wallet} label="Mi billetera" desc={`Saldo: $${(stats?.balance ?? 0).toFixed(2)}`} href="/wallet" gradient="from-violet-500 to-purple-500" />
+        <QuickAction icon={Wallet} label="Mi billetera" desc={`Saldo: $${fmt(stats?.balance, 2)}`} href="/wallet" gradient="from-violet-500 to-purple-500" />
       </motion.div>
 
       {/* Analytics del gestor */}

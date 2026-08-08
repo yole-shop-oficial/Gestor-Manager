@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useSession, useSupabaseQuery } from "@/hooks";
 import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
+import { fmt } from "@/lib/utils";
 import { StatusBadge, LoadingSpinner, EmptyState, ErrorPanel } from "@/components/shared";
 import { UserProfileModal } from "@/components/shared/UserProfileModal";
 import Link from "next/link";
@@ -291,7 +292,7 @@ export function CommercialTree({ isAdmin = false }: CommercialTreeProps) {
 
             <div className="grid grid-cols-2 gap-2">
               <DetailBadge icon={Package} label="Pedidos" value={selectedNodeDetail.total_orders || 0} />
-              <DetailBadge icon={TrendingUp} label="Comisión" value={`$${(selectedNodeDetail.total_commission || 0).toFixed(0)}`} />
+              <DetailBadge icon={TrendingUp} label="Comisión" value={`$${fmt(selectedNodeDetail.total_commission, 0)}`} />
               <DetailBadge icon={Network} label="Nivel" value={selectedNodeDetail.level} />
               <DetailBadge icon={Users} label="Subgestores" value={selectedNodeDetail.children?.length || selectedNodeDetail.children_count || 0} />
               <DetailBadge icon={Clock} label="Ingreso" value={selectedNodeDetail.join_date || "—"} />

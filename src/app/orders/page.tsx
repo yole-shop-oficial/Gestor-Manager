@@ -6,6 +6,7 @@ import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
 import { getCrossProjectP2Client } from "@/services/supabase/crossProjectAdmin";
 import React, { useState, useMemo } from "react";
+import { fmt } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge, EmptyState, LoadingSpinner, ErrorPanel } from "@/components/shared";
@@ -247,8 +248,7 @@ function OrderCard({ order, index, showManager, currentUserId }: {
     const date = new Date(order.created_at);
     return date.toLocaleDateString("es-CU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   }, [order.created_at]);
-
-  const profit = order.sale_price - order.base_price;
+  const profit = Number(order.sale_price) - Number(order.base_price);
   const isMine = order.manager_id === currentUserId;
 
   return (
@@ -274,8 +274,8 @@ function OrderCard({ order, index, showManager, currentUserId }: {
       </div>
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <span className="text-muted-foreground">${order.sale_price.toFixed(2)}</span>
-          {profit > 0 && <span className="text-green-600 dark:text-green-400 font-semibold">+${profit.toFixed(2)}</span>}
+          <span className="text-muted-foreground">${fmt(order.sale_price, 2)}</span>
+          {profit > 0 && <span className="text-green-600 dark:text-green-400 font-semibold">+${fmt(profit, 2)}</span>}
           {order.size && <span className="px-1.5 py-0.5 bg-accent rounded text-[10px] font-semibold">{order.size}</span>}
         </div>
         <span className="text-muted-foreground text-[10px]">{dateStr}</span>

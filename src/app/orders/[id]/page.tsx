@@ -4,6 +4,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/features/auth/components/AuthGate";
 import { useSession, useSupabaseQuery, invalidate } from "@/hooks";
+import { fmt } from "@/lib/utils";
 import React, { useState, useMemo } from "react";
 import { StatusBadge, DetailRow, LoadingSpinner, ErrorPanel } from "@/components/shared";
 import { useQueryClient } from "@tanstack/react-query";
@@ -162,7 +163,7 @@ function OrderDetailContent() {
   }
 
   const statusConfig = useMemo(() => STATUS_CONFIG[order.status] || STATUS_CONFIG.pending, [order?.status]);
-  const commission = useMemo(() => order ? order.sale_price - order.base_price - order.delivery_price : 0, [order?.sale_price, order?.base_price, order?.delivery_price]);
+  const commission = useMemo(() => order ? Number(order.sale_price) - Number(order.base_price) - Number(order.delivery_price) : 0, [order?.sale_price, order?.base_price, order?.delivery_price]);
 
   return (
     <div className="p-6 pb-24 space-y-4">
@@ -193,9 +194,9 @@ function OrderDetailContent() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card-filled rounded-[20px] p-5 space-y-3">
         <h3 className="text-sm font-semibold flex items-center gap-2"><Package className="w-4 h-4 text-primary" /> Producto</h3>
         <DetailRow label="Nombre" value={order.product_name} />
-        <DetailRow label="Precio base" value={`$${order.base_price.toFixed(2)}`} />
-        <DetailRow label="Precio de venta" value={`$${order.sale_price.toFixed(2)}`} />
-        <DetailRow label="Comisión estimada" value={`$${Math.max(0, commission).toFixed(2)}`} highlight />
+        <DetailRow label="Precio base" value={`$${fmt(order.base_price, 2)}`} />
+        <DetailRow label="Precio de venta" value={`$${fmt(order.sale_price, 2)}`} />
+        <DetailRow label="Comisión estimada" value={`$${fmt(Math.max(0, commission), 2)}`} highlight />
         {order.size && <DetailRow label="Talla" value={order.size} />}
         <DetailRow label="Método de pago" value={order.payment_type} />
         {order.notes && <DetailRow label="Notas" value={order.notes} />}
@@ -212,7 +213,7 @@ function OrderDetailContent() {
       {/* Entrega */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card-filled rounded-[20px] p-5 space-y-3">
         <h3 className="text-sm font-semibold flex items-center gap-2"><Truck className="w-4 h-4 text-primary" /> Entrega</h3>
-        <DetailRow label="Precio de entrega" value={`$${order.delivery_price.toFixed(2)}`} />
+        <DetailRow label="Precio de entrega" value={`$${fmt(order.delivery_price, 2)}`} />
         {order.delivery_time && <DetailRow label="Tiempo estimado" value={order.delivery_time} />}
       </motion.div>
 
